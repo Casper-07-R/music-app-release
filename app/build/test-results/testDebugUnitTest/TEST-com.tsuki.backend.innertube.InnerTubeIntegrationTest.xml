@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.tsuki.backend.innertube.InnerTubeIntegrationTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-11-06T18:43:56" hostname="Casper" time="1.328">
+  <properties/>
+  <testcase name="testSearchSongs" classname="com.tsuki.backend.innertube.InnerTubeIntegrationTest" time="0.801"/>
+  <testcase name="testBootstrapVisitorData" classname="com.tsuki.backend.innertube.InnerTubeIntegrationTest" time="0.176"/>
+  <testcase name="testStreamingOkHttpClientConfiguration" classname="com.tsuki.backend.innertube.InnerTubeIntegrationTest" time="0.001"/>
+  <testcase name="testResolveStream" classname="com.tsuki.backend.innertube.InnerTubeIntegrationTest" time="0.35"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

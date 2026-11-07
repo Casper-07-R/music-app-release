@@ -1,0 +1,411 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:2:1-42:12
+INJECTED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:2:1-42:12
+INJECTED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:2:1-42:12
+INJECTED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:2:1-42:12
+MERGED from [androidx.media3:media3-session:1.4.1] /home/casper/.gradle/caches/transforms-4/e19b2a6c1478ae647ebce5fdcd9b3e95/transformed/media3-session-1.4.1/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.media3:media3-ui:1.4.1] /home/casper/.gradle/caches/transforms-4/c74f15bfa958ef1a90df8ae60a12e667/transformed/media3-ui-1.4.1/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.media3:media3-datasource-okhttp:1.4.1] /home/casper/.gradle/caches/transforms-4/f5859ea0a01c902d161066a75a28bb15/transformed/media3-datasource-okhttp-1.4.1/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.media3:media3-extractor:1.4.1] /home/casper/.gradle/caches/transforms-4/3ca1dc6d143815770e2b21fd86b3d0ea/transformed/media3-extractor-1.4.1/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.media3:media3-container:1.4.1] /home/casper/.gradle/caches/transforms-4/a77d27d88c01082049f20ca1edcb920f/transformed/media3-container-1.4.1/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.media3:media3-datasource:1.4.1] /home/casper/.gradle/caches/transforms-4/f1d7a639243cca81b7759cfd62a5f060/transformed/media3-datasource-1.4.1/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.media3:media3-decoder:1.4.1] /home/casper/.gradle/caches/transforms-4/cb392ac8e12334fd36498546d931cb61/transformed/media3-decoder-1.4.1/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.media3:media3-database:1.4.1] /home/casper/.gradle/caches/transforms-4/7e580f77d1a8c6cff29cb345f4e42969/transformed/media3-database-1.4.1/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.media3:media3-common:1.4.1] /home/casper/.gradle/caches/transforms-4/90fe4b9c030802472646ed40361d934e/transformed/media3-common-1.4.1/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.media3:media3-exoplayer:1.4.1] /home/casper/.gradle/caches/transforms-4/9e368c61acd1a0006cfe53228366b8bb/transformed/media3-exoplayer-1.4.1/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.media:media:1.7.0] /home/casper/.gradle/caches/transforms-4/d2ac5c9e8624a3715bb508724b0190d2/transformed/media-1.7.0/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.recyclerview:recyclerview:1.3.0] /home/casper/.gradle/caches/transforms-4/d9654de043c65966acb71835eba6c7e2/transformed/recyclerview-1.3.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.activity:activity:1.9.3] /home/casper/.gradle/caches/transforms-4/9816868ab9a4fdb4ddbc55bf7949fd3f/transformed/activity-1.9.3/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.activity:activity-ktx:1.9.3] /home/casper/.gradle/caches/transforms-4/45ad3365d3737e997900480eb3ab6700/transformed/activity-ktx-1.9.3/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.material3:material3-android:1.3.0] /home/casper/.gradle/caches/transforms-4/9a1e1e5ff7b8bfe9f17742cafd5d5bb2/transformed/material3-release/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.activity:activity-compose:1.9.3] /home/casper/.gradle/caches/transforms-4/9588035ec94047146c08b685753c5456/transformed/activity-compose-1.9.3/AndroidManifest.xml:2:1-7:12
+MERGED from [io.coil-kt:coil-compose:2.6.0] /home/casper/.gradle/caches/transforms-4/e873693cfd7aca2cd840205f66f77a14/transformed/coil-compose-2.6.0/AndroidManifest.xml:2:1-7:12
+MERGED from [io.coil-kt:coil-compose-base:2.6.0] /home/casper/.gradle/caches/transforms-4/7b1081588197ade5f07bd6acddb20d9e/transformed/coil-compose-base-2.6.0/AndroidManifest.xml:2:1-7:12
+MERGED from [io.coil-kt:coil:2.6.0] /home/casper/.gradle/caches/transforms-4/a4669614c3b956603e3ff06fc8a329d2/transformed/coil-2.6.0/AndroidManifest.xml:2:1-7:12
+MERGED from [io.coil-kt:coil-base:2.6.0] /home/casper/.gradle/caches/transforms-4/75fad869d268c2871a0ee4fc93b1bcc6/transformed/coil-base-2.6.0/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.savedstate:savedstate-ktx:1.2.1] /home/casper/.gradle/caches/transforms-4/58eba3a4115f4b6bc4d721f03428deaa/transformed/savedstate-ktx-1.2.1/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.savedstate:savedstate:1.2.1] /home/casper/.gradle/caches/transforms-4/aee0b48149a7e8d5b1df15d22ef6c898/transformed/savedstate-1.2.1/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.compose.animation:animation-core-android:1.7.3] /home/casper/.gradle/caches/transforms-4/e0fabff9bfa5e9eab1e6fac469e4c49c/transformed/animation-core-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.material:material-ripple-android:1.7.3] /home/casper/.gradle/caches/transforms-4/1fed37f3bd23b228a7e04077cf6ce9ba/transformed/material-ripple-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.animation:animation-android:1.7.3] /home/casper/.gradle/caches/transforms-4/886584a398310d846b08bcd5d1403ffb/transformed/animation-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.foundation:foundation-layout-android:1.7.3] /home/casper/.gradle/caches/transforms-4/a3f418a3f8d4b5d04fb83a5533ffb37e/transformed/foundation-layout-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.foundation:foundation-android:1.7.3] /home/casper/.gradle/caches/transforms-4/7308c9a59ed6f1b49a2a77b9a915a05e/transformed/foundation-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-unit-android:1.7.3] /home/casper/.gradle/caches/transforms-4/f75711958a8a174031b109574373d38c/transformed/ui-unit-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-geometry-android:1.7.3] /home/casper/.gradle/caches/transforms-4/c0e673ba35afe09b65a964077b203e21/transformed/ui-geometry-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-util-android:1.7.3] /home/casper/.gradle/caches/transforms-4/c824b41b4112895fc8c957d187f6dcd3/transformed/ui-util-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-tooling-preview-android:1.7.3] /home/casper/.gradle/caches/transforms-4/86ba3c8527b28c7791a169fa70d0de12/transformed/ui-tooling-preview-release/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.compose.ui:ui-graphics-android:1.7.3] /home/casper/.gradle/caches/transforms-4/291b7965b71d35c38457ee46cfc10976/transformed/ui-graphics-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-text-android:1.7.3] /home/casper/.gradle/caches/transforms-4/6ed485f5bf07849a429157d5c1e4c670/transformed/ui-text-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.emoji2:emoji2:1.3.0] /home/casper/.gradle/caches/transforms-4/53bd3c8df4b582893b2bc61d910d3f4f/transformed/emoji2-1.3.0/AndroidManifest.xml:17:1-35:12
+MERGED from [androidx.lifecycle:lifecycle-process:2.8.6] /home/casper/.gradle/caches/transforms-4/3f3545046db3eb91dfbf00407593711d/transformed/lifecycle-process-2.8.6/AndroidManifest.xml:17:1-35:12
+MERGED from [androidx.lifecycle:lifecycle-runtime-compose-android:2.8.6] /home/casper/.gradle/caches/transforms-4/e71422247a7d2c9c6dff6ca85208cefc/transformed/lifecycle-runtime-compose-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.lifecycle:lifecycle-livedata-core:2.8.6] /home/casper/.gradle/caches/transforms-4/64b8874580acace39ec68137e0144c44/transformed/lifecycle-livedata-core-2.8.6/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-android:2.8.6] /home/casper/.gradle/caches/transforms-4/ef604b5fd59ad12c94c47bc425bfac35/transformed/lifecycle-viewmodel-release/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-runtime-android:2.8.6] /home/casper/.gradle/caches/transforms-4/f68dfc79db417756d85f2b06758d6651/transformed/lifecycle-runtime-release/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-savedstate:2.8.6] /home/casper/.gradle/caches/transforms-4/d7c73f0fd73026d58b711e88fb5375dc/transformed/lifecycle-viewmodel-savedstate-2.8.6/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.6] /home/casper/.gradle/caches/transforms-4/45bf926a7642d1aef484df361d06fc91/transformed/lifecycle-viewmodel-ktx-2.8.6/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.lifecycle:lifecycle-runtime-ktx-android:2.8.6] /home/casper/.gradle/caches/transforms-4/7717f412a828b4c8195eeb98c539b049/transformed/lifecycle-runtime-ktx-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-compose-android:2.8.6] /home/casper/.gradle/caches/transforms-4/79aec35d0fb69f1e6c85096b3e8064e9/transformed/lifecycle-viewmodel-compose-release/AndroidManifest.xml:2:1-7:12
+MERGED from [com.google.accompanist:accompanist-drawablepainter:0.32.0] /home/casper/.gradle/caches/transforms-4/3802a641a49d4d1c14b4ced4bdb93e8c/transformed/accompanist-drawablepainter-0.32.0/AndroidManifest.xml:17:1-23:12
+MERGED from [androidx.compose.material:material-icons-extended-android:1.7.3] /home/casper/.gradle/caches/transforms-4/4430cb81b4a4c34c99ae2d3b407c8737/transformed/material-icons-extended-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.material:material-icons-core-android:1.7.3] /home/casper/.gradle/caches/transforms-4/c8d38bd3da003c97d37375eca3a12343/transformed/material-icons-core-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-android:1.7.3] /home/casper/.gradle/caches/transforms-4/b7c3eb66842619ff0b7ebaedf137b336/transformed/ui-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.customview:customview:1.0.0] /home/casper/.gradle/caches/transforms-4/bb5957a8291d4e79b29ce2cc685f72b8/transformed/customview-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.autofill:autofill:1.0.0] /home/casper/.gradle/caches/transforms-4/60ccefa74ce7236887c8786f86a0c0cc/transformed/autofill-1.0.0/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.graphics:graphics-path:1.0.1] /home/casper/.gradle/caches/transforms-4/a970a2595103a0060c70404bc187f6e3/transformed/graphics-path-1.0.1/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.appcompat:appcompat-resources:1.6.1] /home/casper/.gradle/caches/transforms-4/91f0c5c9f87e2ce73723ed16ae2ce96b/transformed/appcompat-resources-1.6.1/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.vectordrawable:vectordrawable-animated:1.1.0] /home/casper/.gradle/caches/transforms-4/9d067cf8ede45acd9103fb0c6a5377c2/transformed/vectordrawable-animated-1.1.0/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.vectordrawable:vectordrawable:1.1.0] /home/casper/.gradle/caches/transforms-4/f62a21fac393862f1b1dd2333bd9aeab/transformed/vectordrawable-1.1.0/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.core:core:1.13.1] /home/casper/.gradle/caches/transforms-4/099fe7f6161456fdc7a61f53c64732b4/transformed/core-1.13.1/AndroidManifest.xml:17:1-30:12
+MERGED from [androidx.customview:customview-poolingcontainer:1.0.0] /home/casper/.gradle/caches/transforms-4/a77b006e19470276c4b65b0141c0cf26/transformed/customview-poolingcontainer-1.0.0/AndroidManifest.xml:17:1-23:12
+MERGED from [androidx.core:core-ktx:1.13.1] /home/casper/.gradle/caches/transforms-4/a3cb082599b9e46c865013bd35f75fc8/transformed/core-ktx-1.13.1/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.runtime:runtime-saveable-android:1.7.3] /home/casper/.gradle/caches/transforms-4/a56bbc4d370a5264e0984f4ee987951f/transformed/runtime-saveable-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.runtime:runtime-android:1.7.3] /home/casper/.gradle/caches/transforms-4/06cf751fe9b0a0e3cd5e682c68e9c727/transformed/runtime-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /home/casper/.gradle/caches/transforms-4/b477f396e90bbc6c103082939384ad0c/transformed/versionedparcelable-1.1.1/AndroidManifest.xml:17:1-27:12
+MERGED from [androidx.annotation:annotation-experimental:1.4.1] /home/casper/.gradle/caches/transforms-4/0f47390e3de6ed6724628caa3a19cebd/transformed/annotation-experimental-1.4.1/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.interpolator:interpolator:1.0.0] /home/casper/.gradle/caches/transforms-4/d4414af72dcb0cbf3a71f4db4a99a7de/transformed/interpolator-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:17:1-55:12
+MERGED from [androidx.startup:startup-runtime:1.1.1] /home/casper/.gradle/caches/transforms-4/b7f90f30d0530471fb25de0c42e32a76/transformed/startup-runtime-1.1.1/AndroidManifest.xml:17:1-33:12
+MERGED from [androidx.tracing:tracing:1.0.0] /home/casper/.gradle/caches/transforms-4/c6be7a3e52100c47c57e1a9db7879b17/transformed/tracing-1.0.0/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.exifinterface:exifinterface:1.3.7] /home/casper/.gradle/caches/transforms-4/6a011c216cfea16416e7ae1a218e7252/transformed/exifinterface-1.3.7/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.arch.core:core-runtime:2.2.0] /home/casper/.gradle/caches/transforms-4/65e48865f8160668617c1b449c6d86e6/transformed/core-runtime-2.2.0/AndroidManifest.xml:17:1-22:12
+	package
+		INJECTED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml
+	android:versionName
+		INJECTED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml
+	android:versionCode
+		INJECTED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml
+	xmlns:android
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:2:11-69
+uses-permission#android.permission.INTERNET
+ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:4:5-67
+	android:name
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:4:22-64
+uses-permission#android.permission.ACCESS_NETWORK_STATE
+ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:5:5-79
+MERGED from [androidx.media3:media3-common:1.4.1] /home/casper/.gradle/caches/transforms-4/90fe4b9c030802472646ed40361d934e/transformed/media3-common-1.4.1/AndroidManifest.xml:22:5-79
+MERGED from [androidx.media3:media3-common:1.4.1] /home/casper/.gradle/caches/transforms-4/90fe4b9c030802472646ed40361d934e/transformed/media3-common-1.4.1/AndroidManifest.xml:22:5-79
+MERGED from [androidx.media3:media3-exoplayer:1.4.1] /home/casper/.gradle/caches/transforms-4/9e368c61acd1a0006cfe53228366b8bb/transformed/media3-exoplayer-1.4.1/AndroidManifest.xml:22:5-79
+MERGED from [androidx.media3:media3-exoplayer:1.4.1] /home/casper/.gradle/caches/transforms-4/9e368c61acd1a0006cfe53228366b8bb/transformed/media3-exoplayer-1.4.1/AndroidManifest.xml:22:5-79
+	android:name
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:5:22-76
+uses-permission#android.permission.ACCESS_WIFI_STATE
+ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:6:5-76
+	android:name
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:6:22-73
+uses-permission#android.permission.FOREGROUND_SERVICE
+ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:7:5-77
+	android:name
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:7:22-74
+uses-permission#android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK
+ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:8:5-92
+	android:name
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:8:22-89
+uses-permission#android.permission.WAKE_LOCK
+ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:9:5-68
+	android:name
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:9:22-65
+uses-permission#android.permission.POST_NOTIFICATIONS
+ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:10:5-77
+	android:name
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:10:22-74
+application
+ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:12:5-40:19
+INJECTED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:12:5-40:19
+MERGED from [androidx.emoji2:emoji2:1.3.0] /home/casper/.gradle/caches/transforms-4/53bd3c8df4b582893b2bc61d910d3f4f/transformed/emoji2-1.3.0/AndroidManifest.xml:23:5-33:19
+MERGED from [androidx.emoji2:emoji2:1.3.0] /home/casper/.gradle/caches/transforms-4/53bd3c8df4b582893b2bc61d910d3f4f/transformed/emoji2-1.3.0/AndroidManifest.xml:23:5-33:19
+MERGED from [androidx.lifecycle:lifecycle-process:2.8.6] /home/casper/.gradle/caches/transforms-4/3f3545046db3eb91dfbf00407593711d/transformed/lifecycle-process-2.8.6/AndroidManifest.xml:23:5-33:19
+MERGED from [androidx.lifecycle:lifecycle-process:2.8.6] /home/casper/.gradle/caches/transforms-4/3f3545046db3eb91dfbf00407593711d/transformed/lifecycle-process-2.8.6/AndroidManifest.xml:23:5-33:19
+MERGED from [androidx.core:core:1.13.1] /home/casper/.gradle/caches/transforms-4/099fe7f6161456fdc7a61f53c64732b4/transformed/core-1.13.1/AndroidManifest.xml:28:5-89
+MERGED from [androidx.core:core:1.13.1] /home/casper/.gradle/caches/transforms-4/099fe7f6161456fdc7a61f53c64732b4/transformed/core-1.13.1/AndroidManifest.xml:28:5-89
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /home/casper/.gradle/caches/transforms-4/b477f396e90bbc6c103082939384ad0c/transformed/versionedparcelable-1.1.1/AndroidManifest.xml:24:5-25:19
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /home/casper/.gradle/caches/transforms-4/b477f396e90bbc6c103082939384ad0c/transformed/versionedparcelable-1.1.1/AndroidManifest.xml:24:5-25:19
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:23:5-53:19
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:23:5-53:19
+MERGED from [androidx.startup:startup-runtime:1.1.1] /home/casper/.gradle/caches/transforms-4/b7f90f30d0530471fb25de0c42e32a76/transformed/startup-runtime-1.1.1/AndroidManifest.xml:25:5-31:19
+MERGED from [androidx.startup:startup-runtime:1.1.1] /home/casper/.gradle/caches/transforms-4/b7f90f30d0530471fb25de0c42e32a76/transformed/startup-runtime-1.1.1/AndroidManifest.xml:25:5-31:19
+	android:extractNativeLibs
+		INJECTED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml
+	android:appComponentFactory
+		ADDED from [androidx.core:core:1.13.1] /home/casper/.gradle/caches/transforms-4/099fe7f6161456fdc7a61f53c64732b4/transformed/core-1.13.1/AndroidManifest.xml:28:18-86
+	android:supportsRtl
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:18:9-35
+	android:label
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:16:9-41
+	android:roundIcon
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:17:9-54
+	android:icon
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:15:9-49
+	android:allowBackup
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:14:9-35
+	android:theme
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:21:9-66
+	android:enableOnBackInvokedCallback
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:20:9-51
+	android:usesCleartextTraffic
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:19:9-44
+	android:name
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:13:9-50
+activity#com.tsuki.ui.MainActivity
+ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:22:9-30:20
+	android:exported
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:24:13-36
+	android:theme
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:25:13-70
+	android:name
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:23:13-41
+intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
+ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:26:13-29:29
+action#android.intent.action.MAIN
+ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:27:17-69
+	android:name
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:27:25-66
+category#android.intent.category.LAUNCHER
+ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:28:17-77
+	android:name
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:28:27-74
+service#com.tsuki.backend.player.PlaybackService
+ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:32:9-39:19
+	android:exported
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:35:13-36
+	android:foregroundServiceType
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:34:13-58
+	android:name
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:33:13-68
+intent-filter#action:name:androidx.media3.session.MediaSessionService
+ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:36:13-38:29
+action#androidx.media3.session.MediaSessionService
+ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:37:17-86
+	android:name
+		ADDED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml:37:25-83
+uses-sdk
+INJECTED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml
+INJECTED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml
+MERGED from [androidx.media3:media3-session:1.4.1] /home/casper/.gradle/caches/transforms-4/e19b2a6c1478ae647ebce5fdcd9b3e95/transformed/media3-session-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-session:1.4.1] /home/casper/.gradle/caches/transforms-4/e19b2a6c1478ae647ebce5fdcd9b3e95/transformed/media3-session-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-ui:1.4.1] /home/casper/.gradle/caches/transforms-4/c74f15bfa958ef1a90df8ae60a12e667/transformed/media3-ui-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-ui:1.4.1] /home/casper/.gradle/caches/transforms-4/c74f15bfa958ef1a90df8ae60a12e667/transformed/media3-ui-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-datasource-okhttp:1.4.1] /home/casper/.gradle/caches/transforms-4/f5859ea0a01c902d161066a75a28bb15/transformed/media3-datasource-okhttp-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-datasource-okhttp:1.4.1] /home/casper/.gradle/caches/transforms-4/f5859ea0a01c902d161066a75a28bb15/transformed/media3-datasource-okhttp-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-extractor:1.4.1] /home/casper/.gradle/caches/transforms-4/3ca1dc6d143815770e2b21fd86b3d0ea/transformed/media3-extractor-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-extractor:1.4.1] /home/casper/.gradle/caches/transforms-4/3ca1dc6d143815770e2b21fd86b3d0ea/transformed/media3-extractor-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-container:1.4.1] /home/casper/.gradle/caches/transforms-4/a77d27d88c01082049f20ca1edcb920f/transformed/media3-container-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-container:1.4.1] /home/casper/.gradle/caches/transforms-4/a77d27d88c01082049f20ca1edcb920f/transformed/media3-container-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-datasource:1.4.1] /home/casper/.gradle/caches/transforms-4/f1d7a639243cca81b7759cfd62a5f060/transformed/media3-datasource-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-datasource:1.4.1] /home/casper/.gradle/caches/transforms-4/f1d7a639243cca81b7759cfd62a5f060/transformed/media3-datasource-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-decoder:1.4.1] /home/casper/.gradle/caches/transforms-4/cb392ac8e12334fd36498546d931cb61/transformed/media3-decoder-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-decoder:1.4.1] /home/casper/.gradle/caches/transforms-4/cb392ac8e12334fd36498546d931cb61/transformed/media3-decoder-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-database:1.4.1] /home/casper/.gradle/caches/transforms-4/7e580f77d1a8c6cff29cb345f4e42969/transformed/media3-database-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-database:1.4.1] /home/casper/.gradle/caches/transforms-4/7e580f77d1a8c6cff29cb345f4e42969/transformed/media3-database-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-common:1.4.1] /home/casper/.gradle/caches/transforms-4/90fe4b9c030802472646ed40361d934e/transformed/media3-common-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-common:1.4.1] /home/casper/.gradle/caches/transforms-4/90fe4b9c030802472646ed40361d934e/transformed/media3-common-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-exoplayer:1.4.1] /home/casper/.gradle/caches/transforms-4/9e368c61acd1a0006cfe53228366b8bb/transformed/media3-exoplayer-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media3:media3-exoplayer:1.4.1] /home/casper/.gradle/caches/transforms-4/9e368c61acd1a0006cfe53228366b8bb/transformed/media3-exoplayer-1.4.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.media:media:1.7.0] /home/casper/.gradle/caches/transforms-4/d2ac5c9e8624a3715bb508724b0190d2/transformed/media-1.7.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.media:media:1.7.0] /home/casper/.gradle/caches/transforms-4/d2ac5c9e8624a3715bb508724b0190d2/transformed/media-1.7.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.recyclerview:recyclerview:1.3.0] /home/casper/.gradle/caches/transforms-4/d9654de043c65966acb71835eba6c7e2/transformed/recyclerview-1.3.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.recyclerview:recyclerview:1.3.0] /home/casper/.gradle/caches/transforms-4/d9654de043c65966acb71835eba6c7e2/transformed/recyclerview-1.3.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.activity:activity:1.9.3] /home/casper/.gradle/caches/transforms-4/9816868ab9a4fdb4ddbc55bf7949fd3f/transformed/activity-1.9.3/AndroidManifest.xml:20:5-44
+MERGED from [androidx.activity:activity:1.9.3] /home/casper/.gradle/caches/transforms-4/9816868ab9a4fdb4ddbc55bf7949fd3f/transformed/activity-1.9.3/AndroidManifest.xml:20:5-44
+MERGED from [androidx.activity:activity-ktx:1.9.3] /home/casper/.gradle/caches/transforms-4/45ad3365d3737e997900480eb3ab6700/transformed/activity-ktx-1.9.3/AndroidManifest.xml:5:5-44
+MERGED from [androidx.activity:activity-ktx:1.9.3] /home/casper/.gradle/caches/transforms-4/45ad3365d3737e997900480eb3ab6700/transformed/activity-ktx-1.9.3/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material3:material3-android:1.3.0] /home/casper/.gradle/caches/transforms-4/9a1e1e5ff7b8bfe9f17742cafd5d5bb2/transformed/material3-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.compose.material3:material3-android:1.3.0] /home/casper/.gradle/caches/transforms-4/9a1e1e5ff7b8bfe9f17742cafd5d5bb2/transformed/material3-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.activity:activity-compose:1.9.3] /home/casper/.gradle/caches/transforms-4/9588035ec94047146c08b685753c5456/transformed/activity-compose-1.9.3/AndroidManifest.xml:5:5-44
+MERGED from [androidx.activity:activity-compose:1.9.3] /home/casper/.gradle/caches/transforms-4/9588035ec94047146c08b685753c5456/transformed/activity-compose-1.9.3/AndroidManifest.xml:5:5-44
+MERGED from [io.coil-kt:coil-compose:2.6.0] /home/casper/.gradle/caches/transforms-4/e873693cfd7aca2cd840205f66f77a14/transformed/coil-compose-2.6.0/AndroidManifest.xml:5:5-44
+MERGED from [io.coil-kt:coil-compose:2.6.0] /home/casper/.gradle/caches/transforms-4/e873693cfd7aca2cd840205f66f77a14/transformed/coil-compose-2.6.0/AndroidManifest.xml:5:5-44
+MERGED from [io.coil-kt:coil-compose-base:2.6.0] /home/casper/.gradle/caches/transforms-4/7b1081588197ade5f07bd6acddb20d9e/transformed/coil-compose-base-2.6.0/AndroidManifest.xml:5:5-44
+MERGED from [io.coil-kt:coil-compose-base:2.6.0] /home/casper/.gradle/caches/transforms-4/7b1081588197ade5f07bd6acddb20d9e/transformed/coil-compose-base-2.6.0/AndroidManifest.xml:5:5-44
+MERGED from [io.coil-kt:coil:2.6.0] /home/casper/.gradle/caches/transforms-4/a4669614c3b956603e3ff06fc8a329d2/transformed/coil-2.6.0/AndroidManifest.xml:5:5-44
+MERGED from [io.coil-kt:coil:2.6.0] /home/casper/.gradle/caches/transforms-4/a4669614c3b956603e3ff06fc8a329d2/transformed/coil-2.6.0/AndroidManifest.xml:5:5-44
+MERGED from [io.coil-kt:coil-base:2.6.0] /home/casper/.gradle/caches/transforms-4/75fad869d268c2871a0ee4fc93b1bcc6/transformed/coil-base-2.6.0/AndroidManifest.xml:5:5-44
+MERGED from [io.coil-kt:coil-base:2.6.0] /home/casper/.gradle/caches/transforms-4/75fad869d268c2871a0ee4fc93b1bcc6/transformed/coil-base-2.6.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.savedstate:savedstate-ktx:1.2.1] /home/casper/.gradle/caches/transforms-4/58eba3a4115f4b6bc4d721f03428deaa/transformed/savedstate-ktx-1.2.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.savedstate:savedstate-ktx:1.2.1] /home/casper/.gradle/caches/transforms-4/58eba3a4115f4b6bc4d721f03428deaa/transformed/savedstate-ktx-1.2.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.savedstate:savedstate:1.2.1] /home/casper/.gradle/caches/transforms-4/aee0b48149a7e8d5b1df15d22ef6c898/transformed/savedstate-1.2.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.savedstate:savedstate:1.2.1] /home/casper/.gradle/caches/transforms-4/aee0b48149a7e8d5b1df15d22ef6c898/transformed/savedstate-1.2.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.compose.animation:animation-core-android:1.7.3] /home/casper/.gradle/caches/transforms-4/e0fabff9bfa5e9eab1e6fac469e4c49c/transformed/animation-core-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.animation:animation-core-android:1.7.3] /home/casper/.gradle/caches/transforms-4/e0fabff9bfa5e9eab1e6fac469e4c49c/transformed/animation-core-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material:material-ripple-android:1.7.3] /home/casper/.gradle/caches/transforms-4/1fed37f3bd23b228a7e04077cf6ce9ba/transformed/material-ripple-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material:material-ripple-android:1.7.3] /home/casper/.gradle/caches/transforms-4/1fed37f3bd23b228a7e04077cf6ce9ba/transformed/material-ripple-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.animation:animation-android:1.7.3] /home/casper/.gradle/caches/transforms-4/886584a398310d846b08bcd5d1403ffb/transformed/animation-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.animation:animation-android:1.7.3] /home/casper/.gradle/caches/transforms-4/886584a398310d846b08bcd5d1403ffb/transformed/animation-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.foundation:foundation-layout-android:1.7.3] /home/casper/.gradle/caches/transforms-4/a3f418a3f8d4b5d04fb83a5533ffb37e/transformed/foundation-layout-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.foundation:foundation-layout-android:1.7.3] /home/casper/.gradle/caches/transforms-4/a3f418a3f8d4b5d04fb83a5533ffb37e/transformed/foundation-layout-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.foundation:foundation-android:1.7.3] /home/casper/.gradle/caches/transforms-4/7308c9a59ed6f1b49a2a77b9a915a05e/transformed/foundation-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.foundation:foundation-android:1.7.3] /home/casper/.gradle/caches/transforms-4/7308c9a59ed6f1b49a2a77b9a915a05e/transformed/foundation-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-unit-android:1.7.3] /home/casper/.gradle/caches/transforms-4/f75711958a8a174031b109574373d38c/transformed/ui-unit-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-unit-android:1.7.3] /home/casper/.gradle/caches/transforms-4/f75711958a8a174031b109574373d38c/transformed/ui-unit-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-geometry-android:1.7.3] /home/casper/.gradle/caches/transforms-4/c0e673ba35afe09b65a964077b203e21/transformed/ui-geometry-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-geometry-android:1.7.3] /home/casper/.gradle/caches/transforms-4/c0e673ba35afe09b65a964077b203e21/transformed/ui-geometry-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-util-android:1.7.3] /home/casper/.gradle/caches/transforms-4/c824b41b4112895fc8c957d187f6dcd3/transformed/ui-util-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-util-android:1.7.3] /home/casper/.gradle/caches/transforms-4/c824b41b4112895fc8c957d187f6dcd3/transformed/ui-util-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-tooling-preview-android:1.7.3] /home/casper/.gradle/caches/transforms-4/86ba3c8527b28c7791a169fa70d0de12/transformed/ui-tooling-preview-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.compose.ui:ui-tooling-preview-android:1.7.3] /home/casper/.gradle/caches/transforms-4/86ba3c8527b28c7791a169fa70d0de12/transformed/ui-tooling-preview-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.compose.ui:ui-graphics-android:1.7.3] /home/casper/.gradle/caches/transforms-4/291b7965b71d35c38457ee46cfc10976/transformed/ui-graphics-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-graphics-android:1.7.3] /home/casper/.gradle/caches/transforms-4/291b7965b71d35c38457ee46cfc10976/transformed/ui-graphics-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-text-android:1.7.3] /home/casper/.gradle/caches/transforms-4/6ed485f5bf07849a429157d5c1e4c670/transformed/ui-text-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-text-android:1.7.3] /home/casper/.gradle/caches/transforms-4/6ed485f5bf07849a429157d5c1e4c670/transformed/ui-text-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.emoji2:emoji2:1.3.0] /home/casper/.gradle/caches/transforms-4/53bd3c8df4b582893b2bc61d910d3f4f/transformed/emoji2-1.3.0/AndroidManifest.xml:21:5-44
+MERGED from [androidx.emoji2:emoji2:1.3.0] /home/casper/.gradle/caches/transforms-4/53bd3c8df4b582893b2bc61d910d3f4f/transformed/emoji2-1.3.0/AndroidManifest.xml:21:5-44
+MERGED from [androidx.lifecycle:lifecycle-process:2.8.6] /home/casper/.gradle/caches/transforms-4/3f3545046db3eb91dfbf00407593711d/transformed/lifecycle-process-2.8.6/AndroidManifest.xml:21:5-44
+MERGED from [androidx.lifecycle:lifecycle-process:2.8.6] /home/casper/.gradle/caches/transforms-4/3f3545046db3eb91dfbf00407593711d/transformed/lifecycle-process-2.8.6/AndroidManifest.xml:21:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime-compose-android:2.8.6] /home/casper/.gradle/caches/transforms-4/e71422247a7d2c9c6dff6ca85208cefc/transformed/lifecycle-runtime-compose-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime-compose-android:2.8.6] /home/casper/.gradle/caches/transforms-4/e71422247a7d2c9c6dff6ca85208cefc/transformed/lifecycle-runtime-compose-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata-core:2.8.6] /home/casper/.gradle/caches/transforms-4/64b8874580acace39ec68137e0144c44/transformed/lifecycle-livedata-core-2.8.6/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata-core:2.8.6] /home/casper/.gradle/caches/transforms-4/64b8874580acace39ec68137e0144c44/transformed/lifecycle-livedata-core-2.8.6/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-android:2.8.6] /home/casper/.gradle/caches/transforms-4/ef604b5fd59ad12c94c47bc425bfac35/transformed/lifecycle-viewmodel-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-android:2.8.6] /home/casper/.gradle/caches/transforms-4/ef604b5fd59ad12c94c47bc425bfac35/transformed/lifecycle-viewmodel-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime-android:2.8.6] /home/casper/.gradle/caches/transforms-4/f68dfc79db417756d85f2b06758d6651/transformed/lifecycle-runtime-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime-android:2.8.6] /home/casper/.gradle/caches/transforms-4/f68dfc79db417756d85f2b06758d6651/transformed/lifecycle-runtime-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-savedstate:2.8.6] /home/casper/.gradle/caches/transforms-4/d7c73f0fd73026d58b711e88fb5375dc/transformed/lifecycle-viewmodel-savedstate-2.8.6/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-savedstate:2.8.6] /home/casper/.gradle/caches/transforms-4/d7c73f0fd73026d58b711e88fb5375dc/transformed/lifecycle-viewmodel-savedstate-2.8.6/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.6] /home/casper/.gradle/caches/transforms-4/45bf926a7642d1aef484df361d06fc91/transformed/lifecycle-viewmodel-ktx-2.8.6/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.6] /home/casper/.gradle/caches/transforms-4/45bf926a7642d1aef484df361d06fc91/transformed/lifecycle-viewmodel-ktx-2.8.6/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime-ktx-android:2.8.6] /home/casper/.gradle/caches/transforms-4/7717f412a828b4c8195eeb98c539b049/transformed/lifecycle-runtime-ktx-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime-ktx-android:2.8.6] /home/casper/.gradle/caches/transforms-4/7717f412a828b4c8195eeb98c539b049/transformed/lifecycle-runtime-ktx-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-compose-android:2.8.6] /home/casper/.gradle/caches/transforms-4/79aec35d0fb69f1e6c85096b3e8064e9/transformed/lifecycle-viewmodel-compose-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-compose-android:2.8.6] /home/casper/.gradle/caches/transforms-4/79aec35d0fb69f1e6c85096b3e8064e9/transformed/lifecycle-viewmodel-compose-release/AndroidManifest.xml:5:5-44
+MERGED from [com.google.accompanist:accompanist-drawablepainter:0.32.0] /home/casper/.gradle/caches/transforms-4/3802a641a49d4d1c14b4ced4bdb93e8c/transformed/accompanist-drawablepainter-0.32.0/AndroidManifest.xml:21:5-44
+MERGED from [com.google.accompanist:accompanist-drawablepainter:0.32.0] /home/casper/.gradle/caches/transforms-4/3802a641a49d4d1c14b4ced4bdb93e8c/transformed/accompanist-drawablepainter-0.32.0/AndroidManifest.xml:21:5-44
+MERGED from [androidx.compose.material:material-icons-extended-android:1.7.3] /home/casper/.gradle/caches/transforms-4/4430cb81b4a4c34c99ae2d3b407c8737/transformed/material-icons-extended-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material:material-icons-extended-android:1.7.3] /home/casper/.gradle/caches/transforms-4/4430cb81b4a4c34c99ae2d3b407c8737/transformed/material-icons-extended-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material:material-icons-core-android:1.7.3] /home/casper/.gradle/caches/transforms-4/c8d38bd3da003c97d37375eca3a12343/transformed/material-icons-core-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material:material-icons-core-android:1.7.3] /home/casper/.gradle/caches/transforms-4/c8d38bd3da003c97d37375eca3a12343/transformed/material-icons-core-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-android:1.7.3] /home/casper/.gradle/caches/transforms-4/b7c3eb66842619ff0b7ebaedf137b336/transformed/ui-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-android:1.7.3] /home/casper/.gradle/caches/transforms-4/b7c3eb66842619ff0b7ebaedf137b336/transformed/ui-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.customview:customview:1.0.0] /home/casper/.gradle/caches/transforms-4/bb5957a8291d4e79b29ce2cc685f72b8/transformed/customview-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.customview:customview:1.0.0] /home/casper/.gradle/caches/transforms-4/bb5957a8291d4e79b29ce2cc685f72b8/transformed/customview-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.autofill:autofill:1.0.0] /home/casper/.gradle/caches/transforms-4/60ccefa74ce7236887c8786f86a0c0cc/transformed/autofill-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.autofill:autofill:1.0.0] /home/casper/.gradle/caches/transforms-4/60ccefa74ce7236887c8786f86a0c0cc/transformed/autofill-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.graphics:graphics-path:1.0.1] /home/casper/.gradle/caches/transforms-4/a970a2595103a0060c70404bc187f6e3/transformed/graphics-path-1.0.1/AndroidManifest.xml:5:5-44
+MERGED from [androidx.graphics:graphics-path:1.0.1] /home/casper/.gradle/caches/transforms-4/a970a2595103a0060c70404bc187f6e3/transformed/graphics-path-1.0.1/AndroidManifest.xml:5:5-44
+MERGED from [androidx.appcompat:appcompat-resources:1.6.1] /home/casper/.gradle/caches/transforms-4/91f0c5c9f87e2ce73723ed16ae2ce96b/transformed/appcompat-resources-1.6.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.appcompat:appcompat-resources:1.6.1] /home/casper/.gradle/caches/transforms-4/91f0c5c9f87e2ce73723ed16ae2ce96b/transformed/appcompat-resources-1.6.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.vectordrawable:vectordrawable-animated:1.1.0] /home/casper/.gradle/caches/transforms-4/9d067cf8ede45acd9103fb0c6a5377c2/transformed/vectordrawable-animated-1.1.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.vectordrawable:vectordrawable-animated:1.1.0] /home/casper/.gradle/caches/transforms-4/9d067cf8ede45acd9103fb0c6a5377c2/transformed/vectordrawable-animated-1.1.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.vectordrawable:vectordrawable:1.1.0] /home/casper/.gradle/caches/transforms-4/f62a21fac393862f1b1dd2333bd9aeab/transformed/vectordrawable-1.1.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.vectordrawable:vectordrawable:1.1.0] /home/casper/.gradle/caches/transforms-4/f62a21fac393862f1b1dd2333bd9aeab/transformed/vectordrawable-1.1.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.core:core:1.13.1] /home/casper/.gradle/caches/transforms-4/099fe7f6161456fdc7a61f53c64732b4/transformed/core-1.13.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.core:core:1.13.1] /home/casper/.gradle/caches/transforms-4/099fe7f6161456fdc7a61f53c64732b4/transformed/core-1.13.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.customview:customview-poolingcontainer:1.0.0] /home/casper/.gradle/caches/transforms-4/a77b006e19470276c4b65b0141c0cf26/transformed/customview-poolingcontainer-1.0.0/AndroidManifest.xml:20:5-21:38
+MERGED from [androidx.customview:customview-poolingcontainer:1.0.0] /home/casper/.gradle/caches/transforms-4/a77b006e19470276c4b65b0141c0cf26/transformed/customview-poolingcontainer-1.0.0/AndroidManifest.xml:20:5-21:38
+MERGED from [androidx.core:core-ktx:1.13.1] /home/casper/.gradle/caches/transforms-4/a3cb082599b9e46c865013bd35f75fc8/transformed/core-ktx-1.13.1/AndroidManifest.xml:5:5-44
+MERGED from [androidx.core:core-ktx:1.13.1] /home/casper/.gradle/caches/transforms-4/a3cb082599b9e46c865013bd35f75fc8/transformed/core-ktx-1.13.1/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.runtime:runtime-saveable-android:1.7.3] /home/casper/.gradle/caches/transforms-4/a56bbc4d370a5264e0984f4ee987951f/transformed/runtime-saveable-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.runtime:runtime-saveable-android:1.7.3] /home/casper/.gradle/caches/transforms-4/a56bbc4d370a5264e0984f4ee987951f/transformed/runtime-saveable-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.runtime:runtime-android:1.7.3] /home/casper/.gradle/caches/transforms-4/06cf751fe9b0a0e3cd5e682c68e9c727/transformed/runtime-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.runtime:runtime-android:1.7.3] /home/casper/.gradle/caches/transforms-4/06cf751fe9b0a0e3cd5e682c68e9c727/transformed/runtime-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /home/casper/.gradle/caches/transforms-4/b477f396e90bbc6c103082939384ad0c/transformed/versionedparcelable-1.1.1/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /home/casper/.gradle/caches/transforms-4/b477f396e90bbc6c103082939384ad0c/transformed/versionedparcelable-1.1.1/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.annotation:annotation-experimental:1.4.1] /home/casper/.gradle/caches/transforms-4/0f47390e3de6ed6724628caa3a19cebd/transformed/annotation-experimental-1.4.1/AndroidManifest.xml:5:5-44
+MERGED from [androidx.annotation:annotation-experimental:1.4.1] /home/casper/.gradle/caches/transforms-4/0f47390e3de6ed6724628caa3a19cebd/transformed/annotation-experimental-1.4.1/AndroidManifest.xml:5:5-44
+MERGED from [androidx.interpolator:interpolator:1.0.0] /home/casper/.gradle/caches/transforms-4/d4414af72dcb0cbf3a71f4db4a99a7de/transformed/interpolator-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.interpolator:interpolator:1.0.0] /home/casper/.gradle/caches/transforms-4/d4414af72dcb0cbf3a71f4db4a99a7de/transformed/interpolator-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:21:5-44
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:21:5-44
+MERGED from [androidx.startup:startup-runtime:1.1.1] /home/casper/.gradle/caches/transforms-4/b7f90f30d0530471fb25de0c42e32a76/transformed/startup-runtime-1.1.1/AndroidManifest.xml:21:5-23:41
+MERGED from [androidx.startup:startup-runtime:1.1.1] /home/casper/.gradle/caches/transforms-4/b7f90f30d0530471fb25de0c42e32a76/transformed/startup-runtime-1.1.1/AndroidManifest.xml:21:5-23:41
+MERGED from [androidx.tracing:tracing:1.0.0] /home/casper/.gradle/caches/transforms-4/c6be7a3e52100c47c57e1a9db7879b17/transformed/tracing-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.tracing:tracing:1.0.0] /home/casper/.gradle/caches/transforms-4/c6be7a3e52100c47c57e1a9db7879b17/transformed/tracing-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.exifinterface:exifinterface:1.3.7] /home/casper/.gradle/caches/transforms-4/6a011c216cfea16416e7ae1a218e7252/transformed/exifinterface-1.3.7/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.exifinterface:exifinterface:1.3.7] /home/casper/.gradle/caches/transforms-4/6a011c216cfea16416e7ae1a218e7252/transformed/exifinterface-1.3.7/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.arch.core:core-runtime:2.2.0] /home/casper/.gradle/caches/transforms-4/65e48865f8160668617c1b449c6d86e6/transformed/core-runtime-2.2.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.arch.core:core-runtime:2.2.0] /home/casper/.gradle/caches/transforms-4/65e48865f8160668617c1b449c6d86e6/transformed/core-runtime-2.2.0/AndroidManifest.xml:20:5-44
+	android:targetSdkVersion
+		INJECTED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from /home/casper/Projects/Tsuki/app/src/main/AndroidManifest.xml
+provider#androidx.startup.InitializationProvider
+ADDED from [androidx.emoji2:emoji2:1.3.0] /home/casper/.gradle/caches/transforms-4/53bd3c8df4b582893b2bc61d910d3f4f/transformed/emoji2-1.3.0/AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.lifecycle:lifecycle-process:2.8.6] /home/casper/.gradle/caches/transforms-4/3f3545046db3eb91dfbf00407593711d/transformed/lifecycle-process-2.8.6/AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.lifecycle:lifecycle-process:2.8.6] /home/casper/.gradle/caches/transforms-4/3f3545046db3eb91dfbf00407593711d/transformed/lifecycle-process-2.8.6/AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.startup:startup-runtime:1.1.1] /home/casper/.gradle/caches/transforms-4/b7f90f30d0530471fb25de0c42e32a76/transformed/startup-runtime-1.1.1/AndroidManifest.xml:26:9-30:34
+MERGED from [androidx.startup:startup-runtime:1.1.1] /home/casper/.gradle/caches/transforms-4/b7f90f30d0530471fb25de0c42e32a76/transformed/startup-runtime-1.1.1/AndroidManifest.xml:26:9-30:34
+	tools:node
+		ADDED from [androidx.emoji2:emoji2:1.3.0] /home/casper/.gradle/caches/transforms-4/53bd3c8df4b582893b2bc61d910d3f4f/transformed/emoji2-1.3.0/AndroidManifest.xml:28:13-31
+	android:authorities
+		ADDED from [androidx.emoji2:emoji2:1.3.0] /home/casper/.gradle/caches/transforms-4/53bd3c8df4b582893b2bc61d910d3f4f/transformed/emoji2-1.3.0/AndroidManifest.xml:26:13-68
+	android:exported
+		ADDED from [androidx.emoji2:emoji2:1.3.0] /home/casper/.gradle/caches/transforms-4/53bd3c8df4b582893b2bc61d910d3f4f/transformed/emoji2-1.3.0/AndroidManifest.xml:27:13-37
+	android:name
+		ADDED from [androidx.emoji2:emoji2:1.3.0] /home/casper/.gradle/caches/transforms-4/53bd3c8df4b582893b2bc61d910d3f4f/transformed/emoji2-1.3.0/AndroidManifest.xml:25:13-67
+meta-data#androidx.emoji2.text.EmojiCompatInitializer
+ADDED from [androidx.emoji2:emoji2:1.3.0] /home/casper/.gradle/caches/transforms-4/53bd3c8df4b582893b2bc61d910d3f4f/transformed/emoji2-1.3.0/AndroidManifest.xml:29:13-31:52
+	android:value
+		ADDED from [androidx.emoji2:emoji2:1.3.0] /home/casper/.gradle/caches/transforms-4/53bd3c8df4b582893b2bc61d910d3f4f/transformed/emoji2-1.3.0/AndroidManifest.xml:31:17-49
+	android:name
+		ADDED from [androidx.emoji2:emoji2:1.3.0] /home/casper/.gradle/caches/transforms-4/53bd3c8df4b582893b2bc61d910d3f4f/transformed/emoji2-1.3.0/AndroidManifest.xml:30:17-75
+meta-data#androidx.lifecycle.ProcessLifecycleInitializer
+ADDED from [androidx.lifecycle:lifecycle-process:2.8.6] /home/casper/.gradle/caches/transforms-4/3f3545046db3eb91dfbf00407593711d/transformed/lifecycle-process-2.8.6/AndroidManifest.xml:29:13-31:52
+	android:value
+		ADDED from [androidx.lifecycle:lifecycle-process:2.8.6] /home/casper/.gradle/caches/transforms-4/3f3545046db3eb91dfbf00407593711d/transformed/lifecycle-process-2.8.6/AndroidManifest.xml:31:17-49
+	android:name
+		ADDED from [androidx.lifecycle:lifecycle-process:2.8.6] /home/casper/.gradle/caches/transforms-4/3f3545046db3eb91dfbf00407593711d/transformed/lifecycle-process-2.8.6/AndroidManifest.xml:30:17-78
+permission#${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.13.1] /home/casper/.gradle/caches/transforms-4/099fe7f6161456fdc7a61f53c64732b4/transformed/core-1.13.1/AndroidManifest.xml:22:5-24:47
+	android:protectionLevel
+		ADDED from [androidx.core:core:1.13.1] /home/casper/.gradle/caches/transforms-4/099fe7f6161456fdc7a61f53c64732b4/transformed/core-1.13.1/AndroidManifest.xml:24:9-44
+	android:name
+		ADDED from [androidx.core:core:1.13.1] /home/casper/.gradle/caches/transforms-4/099fe7f6161456fdc7a61f53c64732b4/transformed/core-1.13.1/AndroidManifest.xml:23:9-81
+permission#com.tsuki.ui.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.13.1] /home/casper/.gradle/caches/transforms-4/099fe7f6161456fdc7a61f53c64732b4/transformed/core-1.13.1/AndroidManifest.xml:22:5-24:47
+	android:protectionLevel
+		ADDED from [androidx.core:core:1.13.1] /home/casper/.gradle/caches/transforms-4/099fe7f6161456fdc7a61f53c64732b4/transformed/core-1.13.1/AndroidManifest.xml:24:9-44
+	android:name
+		ADDED from [androidx.core:core:1.13.1] /home/casper/.gradle/caches/transforms-4/099fe7f6161456fdc7a61f53c64732b4/transformed/core-1.13.1/AndroidManifest.xml:23:9-81
+uses-permission#${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.13.1] /home/casper/.gradle/caches/transforms-4/099fe7f6161456fdc7a61f53c64732b4/transformed/core-1.13.1/AndroidManifest.xml:26:5-97
+	android:name
+		ADDED from [androidx.core:core:1.13.1] /home/casper/.gradle/caches/transforms-4/099fe7f6161456fdc7a61f53c64732b4/transformed/core-1.13.1/AndroidManifest.xml:26:22-94
+uses-permission#com.tsuki.ui.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.13.1] /home/casper/.gradle/caches/transforms-4/099fe7f6161456fdc7a61f53c64732b4/transformed/core-1.13.1/AndroidManifest.xml:26:5-97
+	android:name
+		ADDED from [androidx.core:core:1.13.1] /home/casper/.gradle/caches/transforms-4/099fe7f6161456fdc7a61f53c64732b4/transformed/core-1.13.1/AndroidManifest.xml:26:22-94
+meta-data#androidx.profileinstaller.ProfileInstallerInitializer
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:29:13-31:52
+	android:value
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:31:17-49
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:30:17-85
+receiver#androidx.profileinstaller.ProfileInstallReceiver
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:34:9-52:20
+	android:enabled
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:37:13-35
+	android:exported
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:38:13-36
+	android:permission
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:39:13-57
+	android:directBootAware
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:36:13-44
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:35:13-76
+intent-filter#action:name:androidx.profileinstaller.action.INSTALL_PROFILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:40:13-42:29
+action#androidx.profileinstaller.action.INSTALL_PROFILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:41:17-91
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:41:25-88
+intent-filter#action:name:androidx.profileinstaller.action.SKIP_FILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:43:13-45:29
+action#androidx.profileinstaller.action.SKIP_FILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:44:17-85
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:44:25-82
+intent-filter#action:name:androidx.profileinstaller.action.SAVE_PROFILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:46:13-48:29
+action#androidx.profileinstaller.action.SAVE_PROFILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:47:17-88
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:47:25-85
+intent-filter#action:name:androidx.profileinstaller.action.BENCHMARK_OPERATION
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:49:13-51:29
+action#androidx.profileinstaller.action.BENCHMARK_OPERATION
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:50:17-95
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.1] /home/casper/.gradle/caches/transforms-4/c835907ef76ffc049910e1584b38d4f9/transformed/profileinstaller-1.3.1/AndroidManifest.xml:50:25-92

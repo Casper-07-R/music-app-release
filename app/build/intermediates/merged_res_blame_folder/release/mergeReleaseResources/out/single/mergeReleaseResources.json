@@ -1,0 +1,130 @@
+[
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_chevron_down.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_chevron_down.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/font_circular_sp_book.otf.flat",
+        "source": "com.tsuki.ui.app-main-52:/font/circular_sp_book.otf"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_headphones.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_headphones.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_chart.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_chart.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_plus.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_plus.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_check.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_check.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_share.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_share.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_settings.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_settings.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_heart.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_heart.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_close.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_close.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_skip_next.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_skip_next.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_play.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_play.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_more.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_more.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/font_circular_sp_title_black.otf.flat",
+        "source": "com.tsuki.ui.app-main-52:/font/circular_sp_title_black.otf"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_soundwave.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_soundwave.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_history.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_history.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_connect.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_connect.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_shuffle.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_shuffle.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/font_circular_sp_bold.otf.flat",
+        "source": "com.tsuki.ui.app-main-52:/font/circular_sp_bold.otf"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_download.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_download.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_library.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_library.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_repeat.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_repeat.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_profile.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_profile.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_heart_filled.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_heart_filled.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_search.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_search.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_home.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_home.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/font_circular_sp_title_bold.otf.flat",
+        "source": "com.tsuki.ui.app-main-52:/font/circular_sp_title_bold.otf"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_pause.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_pause.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_notifications.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_notifications.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_queue.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_queue.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_spotify_logo.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_spotify_logo.xml"
+    },
+    {
+        "merged": "com.tsuki.ui.app-release-51:/drawable_ic_skip_back.xml.flat",
+        "source": "com.tsuki.ui.app-main-52:/drawable/ic_skip_back.xml"
+    }
+]

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.tsuki.backend.audio.EightDAudioProcessorTest" tests="15" skipped="0" failures="0" errors="0" timestamp="2026-11-06T18:43:59" hostname="Casper" time="0.293">
+  <properties/>
+  <testcase name="testNightcoreProfileAudioFlow" classname="com.tsuki.backend.audio.EightDAudioProcessorTest" time="0.06"/>
+  <testcase name="testMinuteSoundsExtractedAcrossAllProfiles" classname="com.tsuki.backend.audio.EightDAudioProcessorTest" time="0.022"/>
+  <testcase name="testHighFrequenciesRemainCrystalClearAtSides" classname="com.tsuki.backend.audio.EightDAudioProcessorTest" time="0.019"/>
+  <testcase name="testOppositeEarNeverEmptiesOutAtMaxPanning" classname="com.tsuki.backend.audio.EightDAudioProcessorTest" time="0.12"/>
+  <testcase name="testBalancedProfileRotationSpeedIncrease" classname="com.tsuki.backend.audio.EightDAudioProcessorTest" time="0.0"/>
+  <testcase name="testEightDAudioProcessor16DPlaybackAudioFlow" classname="com.tsuki.backend.audio.EightDAudioProcessorTest" time="0.001"/>
+  <testcase name="testSpatial360ProfileAudioFlow" classname="com.tsuki.backend.audio.EightDAudioProcessorTest" time="0.01"/>
+  <testcase name="testEightDAudioProcessorBalancedPlaybackAudioFlow" classname="com.tsuki.backend.audio.EightDAudioProcessorTest" time="0.015"/>
+  <testcase name="testBiquadHighShelfStability" classname="com.tsuki.backend.audio.EightDAudioProcessorTest" time="0.008"/>
+  <testcase name="testSoundDefinitionPeakingFilterStability" classname="com.tsuki.backend.audio.EightDAudioProcessorTest" time="0.003"/>
+  <testcase name="testSurround360SimultaneousSidesNoDropout" classname="com.tsuki.backend.audio.EightDAudioProcessorTest" time="0.01"/>
+  <testcase name="testVocalPresencePeakingFilterStability" classname="com.tsuki.backend.audio.EightDAudioProcessorTest" time="0.003"/>
+  <testcase name="testBiquadLowShelfStability" classname="com.tsuki.backend.audio.EightDAudioProcessorTest" time="0.005"/>
+  <testcase name="testMicroDetailUpwardBoost" classname="com.tsuki.backend.audio.EightDAudioProcessorTest" time="0.002"/>
+  <testcase name="testBalancedZeroTearWithTransients" classname="com.tsuki.backend.audio.EightDAudioProcessorTest" time="0.015"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
