@@ -10,8 +10,8 @@ data class Track(
     val artist: String,
     val album: String = "",
     val durationSeconds: Int = 0,
-    val coverGradientStart: Color = Color(0xFF1E3264),
-    val coverGradientEnd: Color = Color(0xFF121212),
+    val coverGradientStart: Color = Color(0xFF133642),
+    val coverGradientEnd: Color = Color(0xFF07181E),
     val thumbnailUrl: String? = null,
     val isLiked: Boolean = false,
     val lyrics: List<String> = emptyList(),
@@ -52,8 +52,8 @@ data class Album(
     val year: Int = 2024,
     val trackCount: Int = 0,
     val thumbnailUrl: String? = null,
-    val coverGradientStart: Color = Color(0xFF282828),
-    val coverGradientEnd: Color = Color(0xFF121212)
+    val coverGradientStart: Color = Color(0xFF133642),
+    val coverGradientEnd: Color = Color(0xFF07181E)
 )
 
 data class Playlist(
@@ -64,8 +64,8 @@ data class Playlist(
     val isPinned: Boolean = false,
     val isLikedSongs: Boolean = false,
     val thumbnailUrl: String? = null,
-    val coverGradientStart: Color = Color(0xFF1E3264),
-    val coverGradientEnd: Color = Color(0xFF121212),
+    val coverGradientStart: Color = Color(0xFF133642),
+    val coverGradientEnd: Color = Color(0xFF07181E),
     val creator: String = "Koi",
     val tracks: List<Track> = emptyList()
 )

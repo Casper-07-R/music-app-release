@@ -1,11 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="spotify_green">#1ED760</color>
-    <color name="spotify_black">#121212</color>
-    <color name="spotify_pure_black">#000000</color>
-    <color name="spotify_surface">#282828</color>
-    <color name="spotify_surface_highlight">#3E3E3E</color>
-    <color name="spotify_text_primary">#FFFFFF</color>
-    <color name="spotify_text_secondary">#B3B3B3</color>
-    <color name="spotify_text_muted">#7F7F7F</color>
+    <color name="koi_orange">#FF6B35</color>
+    <color name="koi_amber">#FFB703</color>
+    <color name="koi_pond_abyss">#041014</color>
+    <color name="koi_pond_water">#07181E</color>
+    <color name="koi_pond_surface">#0D252E</color>
+    <color name="koi_pond_highlight">#1B4250</color>
+    <color name="spotify_green">#FF6B35</color>
+    <color name="spotify_black">#07181E</color>
+    <color name="spotify_pure_black">#041014</color>
+    <color name="spotify_surface">#0D252E</color>
+    <color name="spotify_surface_highlight">#1B4250</color>
+    <color name="spotify_text_primary">#F0FDFD</color>
+    <color name="spotify_text_secondary">#88A6B0</color>
+    <color name="spotify_text_muted">#4C6B75</color>
 </resources>

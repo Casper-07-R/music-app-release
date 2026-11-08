@@ -85,8 +85,8 @@ class PlaybackViewModel : ViewModel() {
         album = "Starboy",
         durationSeconds = 230,
         thumbnailUrl = "https://i.ytimg.com/vi/34Na4j8AVgA/hqdefault.jpg",
-        coverGradientStart = Color(0xFF1DB954),
-        coverGradientEnd = Color(0xFF070709)
+        coverGradientStart = Color(0xFFFF6B35),
+        coverGradientEnd = Color(0xFF07181E)
     )
 
     private val defaultCategories = listOf(
@@ -416,8 +416,8 @@ class PlaybackViewModel : ViewModel() {
                     description = "${tracks.size} songs",
                     trackCount = tracks.size,
                     thumbnailUrl = info.coverUrl,
-                    coverGradientStart = Color(0xFF1DB954),
-                    coverGradientEnd = Color(0xFF070709),
+                    coverGradientStart = Color(0xFFFF6B35),
+                    coverGradientEnd = Color(0xFF07181E),
                     creator = "You",
                     tracks = tracks.map { it.toTrack(database.isLiked(it.videoId)) }
                 )

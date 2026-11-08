@@ -29,8 +29,8 @@ data class ShelfCardItem(
     val title: String,
     val subtitle: String,
     val thumbnailUrl: String? = null,
-    val gradientStart: Color = Color(0xFF1E3264),
-    val gradientEnd: Color = Color(0xFF121212)
+    val gradientStart: Color = Color(0xFF133642),
+    val gradientEnd: Color = Color(0xFF07181E)
 )
 
 @Composable
