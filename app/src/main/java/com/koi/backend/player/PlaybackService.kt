@@ -87,7 +87,7 @@ class PlaybackService : MediaSessionService() {
             val session = MediaSession.Builder(this, forwardingPlayer)
                 .setSessionActivity(sessionActivityPendingIntent)
                 .setCallback(callback)
-                .setBitmapLoader(CacheBitmapLoader(SimpleBitmapLoader()))
+                .setBitmapLoader(KoiNotificationBitmapLoader(this))
                 .build()
             mediaSession = session
             addSession(session)

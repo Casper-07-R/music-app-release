@@ -726,6 +726,56 @@ fun SettingsScreen(
                             )
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    HorizontalDivider(color = RogDivider)
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Notification Card Theme
+                    val notifPrefs = remember(context) { context.getSharedPreferences("koi_notif_prefs", Context.MODE_PRIVATE) }
+                    var notifStyle by remember { mutableStateOf(notifPrefs.getInt("koi_notif_style", 0)) }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text(
+                                text = "Notification Card Theme",
+                                fontSize = 14.sp,
+                                fontFamily = CircularFontFamily,
+                                fontWeight = FontWeight.SemiBold,
+                                color = RogTextPrimary
+                            )
+                            Text(
+                                text = if (notifStyle == 0) "Koi Pond + Floating Album Art" else "Pure Koi Pond with Water Ripples",
+                                fontSize = 11.5.sp,
+                                fontFamily = CircularFontFamily,
+                                color = RogTextSecondary
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(RogSurfaceHighlight)
+                                .clickable {
+                                    val next = if (notifStyle == 0) 1 else 0
+                                    notifStyle = next
+                                    notifPrefs.edit().putInt("koi_notif_style", next).apply()
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = if (notifStyle == 0) "Pond + Disc" else "Pure Pond",
+                                fontSize = 11.5.sp,
+                                fontFamily = CircularFontFamily,
+                                color = RogTextGold,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
             }
 
