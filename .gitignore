@@ -1,0 +1,66 @@
+# ==========================================
+# Gradle & Build Artifacts
+# ==========================================
+.gradle/
+build/
+app/build/
+**/build/
+bin/
+gen/
+out/
+intermediates/
+
+# Built application packages
+*.apk
+*.aar
+*.ap_
+*.aab
+*.dex
+*.class
+
+# Gradle build cache & cleanup
+buildOutputCleanup/
+
+# Local configuration & keys
+local.properties
+*.jks
+*.keystore
+
+# ==========================================
+# IDE & System Files
+# ==========================================
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+captures/
+.externalNativeBuild/
+.cxx/
+.navigation/
+
+# ==========================================
+# Temporary Folders & Files
+# ==========================================
+tmp/
+temp/
+.tmp/
+**/tmp/
+**/temp/
+**/.tmp/
+*.tmp
+*.temp
+*~
+*.swp
+*.bak
+*.log
+
+# ==========================================
+# Test Files & Test Outputs
+# ==========================================
+app/src/test/
+**/test/
+*Test.kt
+**/test-results/
+**/reports/tests/
+test-results/
+test-reports/

@@ -1,18 +1,18 @@
-# Tsuki - High-Fidelity Music UI with Jetpack Compose
+# Koi - High-Fidelity Music UI with Jetpack Compose
 
-**Tsuki** is a modern, production-grade Android music player interface built entirely from scratch with **Kotlin Jetpack Compose** and Material 3, incorporating reverse-engineered design patterns, typography, and iconography extracted from modern streaming architectures using the **REA MCP** suite.
+**Koi** is a modern, production-grade Android music player interface built entirely from scratch with **Kotlin Jetpack Compose** and Material 3, incorporating reverse-engineered design patterns, typography, and iconography extracted from modern streaming architectures using the **REA MCP** suite.
 
 ---
 
 ## Project Architecture
 
 ```
-Tsuki/                                        # Root Project Directory
+Koi/                                        # Root Project Directory
 ├── app/                                        # Main Android Application Module
 │   ├── build.gradle.kts                        # Gradle config (Compose BOM, M3, compileSdk 35)
 │   └── src/main/
 │       ├── AndroidManifest.xml                 # App manifest with launcher activity
-│       ├── java/com/tsuki/ui/
+│       ├── java/com/koi/ui/
 │       │   ├── MainActivity.kt                 # Entry point & root view orchestration
 │       │   ├── components/                     # Reusable UI components
 │       │   │   ├── FilterChipRow.kt            # Pill filter chips ("All", "Music", "Podcasts")
@@ -21,7 +21,7 @@ Tsuki/                                        # Root Project Directory
 │       │   │   ├── NowPlayingFullScreenSheet.kt# Full-screen player with lyrics & scrubber
 │       │   │   ├── NowPlayingMiniBar.kt        # Floating bottom player bar with 2dp progress
 │       │   │   ├── QuickAccessGrid.kt          # 2x3 compact grid (Liked Songs, Daily Mix)
-│       │   │   ├── SpotifyBottomNavBar.kt      # Persistent 4-tab bottom navigation (TsukiBottomNavBar)
+│       │   │   ├── SpotifyBottomNavBar.kt      # Persistent 4-tab bottom navigation (KoiBottomNavBar)
 │       │   │   └── TrackListItem.kt            # Playlist track row with metadata & like
 │       │   ├── model/
 │       │   │   └── Models.kt                   # Track, Album, Playlist, Category models
@@ -32,12 +32,13 @@ Tsuki/                                        # Root Project Directory
 │       │   │   └── SearchScreen.kt             # Search bar & 2-column genre grid
 │       │   ├── theme/
 │       │   │   ├── Color.kt                    # Encore design tokens (#1ED760, #121212)
-│       │   │   ├── Theme.kt                    # TsukiTheme Material3 dark theme
+│       │   │   ├── Theme.kt                    # KoiTheme Material3 dark theme
 │       │   │   └── Type.kt                     # Circular typeface typography definitions
 │       │   └── viewmodel/
 │       │       └── PlaybackViewModel.kt        # Reactive playback state management
 │       └── res/
 │           ├── drawable/                       # Vector drawables (icons, glyphs)
+│           │   ├── ic_koi_logo.xml
 │           │   ├── ic_spotify_logo.xml
 │           │   ├── ic_home.xml
 │           │   ├── ic_search.xml
@@ -59,7 +60,7 @@ Tsuki/                                        # Root Project Directory
 │           │   └── circular_sp_title_bold.otf
 │           └── values/
 │               ├── colors.xml                  # Color definitions
-│               └── strings.xml                 # App name: Tsuki
+│               └── strings.xml                 # App name: Koi
 │
 ├── stripped-ui/                                # Curated stripped reference UI assets
 │   ├── UI_SPECIFICATION.md                     # Deep design spec & token documentation
@@ -70,7 +71,7 @@ Tsuki/                                        # Root Project Directory
 │   └── manifest/                               # Original AndroidManifest.xml
 │
 ├── build.gradle.kts                            # Root Gradle build configuration
-├── settings.gradle.kts                         # rootProject.name = "Tsuki"
+├── settings.gradle.kts                         # rootProject.name = "Koi"
 └── gradle.properties
 ```
 
@@ -131,9 +132,9 @@ Tsuki/                                        # Root Project Directory
 
 ## Build & Run
 
-Open `/home/casper/Projects/Tsuki` in **Android Studio**, or build via Gradle:
+Open `/home/casper/Projects/Koi` in **Android Studio**, or build via Gradle:
 
 ```bash
-cd ~/Projects/Tsuki
+cd ~/Projects/Koi
 gradle assembleDebug
 ```

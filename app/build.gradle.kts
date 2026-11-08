@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.tsuki.ui"
+    namespace = "com.koi.ui"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.tsuki.ui"
+        applicationId = "com.koi.ui"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
