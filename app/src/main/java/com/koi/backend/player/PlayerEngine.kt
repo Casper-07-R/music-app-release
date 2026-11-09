@@ -167,18 +167,19 @@ class PlayerEngine(
     }
 
     private fun buildDataSourceFactory(userAgent: String): DataSource.Factory {
-        val upstreamFactory = OkHttpDataSource.Factory(innerTube.streamingOkHttpClient)
+        val httpFactory = OkHttpDataSource.Factory(innerTube.streamingOkHttpClient)
             .setUserAgent(userAgent)
         val app = context.applicationContext as? KoiApplication
         val cache = app?.mediaCache
-        return if (cache != null) {
+        val upstreamFactory = if (cache != null) {
             CacheDataSource.Factory()
                 .setCache(cache)
-                .setUpstreamDataSourceFactory(upstreamFactory)
+                .setUpstreamDataSourceFactory(httpFactory)
                 .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         } else {
-            upstreamFactory
+            httpFactory
         }
+        return androidx.media3.datasource.DefaultDataSource.Factory(context, upstreamFactory)
     }
 
     val exoPlayer: ExoPlayer = run {
@@ -479,7 +480,10 @@ class PlayerEngine(
             if (!isActive) return@launch
 
             val localPath = database.getDownloadedFilePath(nextSong.videoId)
-            if (localPath != null && java.io.File(localPath).exists()) return@launch
+            val isLocalDownloaded = (localPath != null && java.io.File(localPath).exists()) ||
+                java.io.File(context.filesDir, "downloads/${nextSong.videoId}.m4a").exists() ||
+                java.io.File(context.filesDir, "downloads/${nextSong.videoId}.mp3").exists()
+            if (isLocalDownloaded) return@launch
 
             val cached = database.getCachedStream(nextSong.videoId)
             if (cached != null) return@launch
@@ -565,8 +569,15 @@ class PlayerEngine(
             try {
                 // 0. Check local downloaded file first
                 val localPath = withContext(Dispatchers.IO) { database.getDownloadedFilePath(song.videoId) }
-                if (localPath != null && java.io.File(localPath).exists()) {
-                    Log.d(TAG, "Playing ${song.title} from local download: $localPath at ${startPositionMs}ms")
+                val localFile = when {
+                    localPath != null && java.io.File(localPath).exists() -> java.io.File(localPath)
+                    java.io.File(context.filesDir, "downloads/${song.videoId}.m4a").exists() -> java.io.File(context.filesDir, "downloads/${song.videoId}.m4a")
+                    java.io.File(context.filesDir, "downloads/${song.videoId}.mp3").exists() -> java.io.File(context.filesDir, "downloads/${song.videoId}.mp3")
+                    else -> null
+                }
+
+                if (localFile != null && localFile.exists() && localFile.length() > 0) {
+                    Log.d(TAG, "Playing ${song.title} from local download: ${localFile.absolutePath} at ${startPositionMs}ms")
                     val highResThumb = InnerTubeClient.getHighResThumbnailUrl(song.thumbnailUrl)
                     val metadata = MediaMetadata.Builder()
                         .setTitle(song.title)
@@ -576,13 +587,15 @@ class PlayerEngine(
                         .build()
 
                     val mediaItem = MediaItem.Builder()
-                        .setUri(Uri.fromFile(java.io.File(localPath)))
+                        .setUri(Uri.fromFile(localFile))
                         .setMediaId(song.videoId)
                         .setCustomCacheKey(song.videoId)
                         .setMediaMetadata(metadata)
                         .build()
 
-                    exoPlayer.setMediaItem(mediaItem)
+                    val dataSourceFactory = buildDataSourceFactory(InnerTubeClient.VISIONOS_USER_AGENT)
+                    val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
+                    exoPlayer.setMediaSource(mediaSource)
                     if (startPositionMs > 1000L) {
                         exoPlayer.seekTo(startPositionMs)
                     }

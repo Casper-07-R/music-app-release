@@ -38,15 +38,19 @@ import com.koi.backend.player.BatteryOptimizationHelper
 import com.koi.backend.audio.AudioProfile
 import com.koi.backend.audio.SpatialMode
 import com.koi.ui.components.AddSongsToPlaylistSheet
+import com.koi.ui.components.DownloadQualitySheet
+import com.koi.ui.components.EditPlaylistDialog
 import com.koi.ui.components.EightDAudioStudioSheet
 import com.koi.ui.components.EightDProfileSelectorSheet
 import com.koi.ui.components.EqualizerProfilesSheet
+import com.koi.ui.components.InitialUsernameDialog
 import com.koi.ui.components.NowPlayingFullScreenSheet
 import com.koi.ui.components.NowPlayingMiniBar
 import com.koi.ui.components.SleepTimerSheet
 import com.koi.ui.components.KoiBottomNavBar
 import com.koi.ui.model.NavigationTab
 import com.koi.ui.model.SearchHistoryType
+import com.koi.ui.screens.DownloadManagerScreen
 import com.koi.ui.screens.HomeScreen
 import com.koi.ui.screens.LibraryScreen
 import com.koi.ui.screens.PlaylistDetailScreen
@@ -97,18 +101,20 @@ fun KoiApp(
     val context = LocalContext.current
     val batteryPrefs = remember(context) { context.getSharedPreferences("koi_battery_prefs", android.content.Context.MODE_PRIVATE) }
 
-    LaunchedEffect(Unit) {
-        val hasPrompted = batteryPrefs.getBoolean("has_prompted_unrestricted_bg", false)
-        if (!hasPrompted && !BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)) {
-            batteryPrefs.edit().putBoolean("has_prompted_unrestricted_bg", true).apply()
-            kotlinx.coroutines.delay(1200)
-            if (!BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)) {
-                Toast.makeText(
-                    context,
-                    "Allow unrestricted background access for continuous playback",
-                    Toast.LENGTH_LONG
-                ).show()
-                BatteryOptimizationHelper.requestIgnoreBatteryOptimizations(context)
+    LaunchedEffect(uiState.showInitialUsernameDialog) {
+        if (!uiState.showInitialUsernameDialog) {
+            val hasPrompted = batteryPrefs.getBoolean("has_prompted_unrestricted_bg", false)
+            if (!hasPrompted && !BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)) {
+                batteryPrefs.edit().putBoolean("has_prompted_unrestricted_bg", true).apply()
+                kotlinx.coroutines.delay(1200)
+                if (!BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)) {
+                    Toast.makeText(
+                        context,
+                        "Allow unrestricted background access for continuous playback",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    BatteryOptimizationHelper.requestIgnoreBatteryOptimizations(context)
+                }
             }
         }
     }
@@ -133,6 +139,9 @@ fun KoiApp(
     }
     BackHandler(enabled = uiState.selectedPlaylist != null && !uiState.isFullScreenPlayerExpanded && !uiState.showEightDStudioSheet && !uiState.showEqualizerSheet) {
         viewModel.closePlaylist()
+    }
+    BackHandler(enabled = uiState.showDownloadManager && uiState.selectedPlaylist == null && !uiState.isFullScreenPlayerExpanded && !uiState.showEightDStudioSheet && !uiState.showEqualizerSheet) {
+        viewModel.closeDownloadManager()
     }
     BackHandler(enabled = uiState.showSettingsScreen && !uiState.isFullScreenPlayerExpanded && !uiState.showEightDStudioSheet && !uiState.showEqualizerSheet) {
         viewModel.closeSettings()
@@ -171,6 +180,8 @@ fun KoiApp(
                     }
                 )
             } else if (uiState.selectedPlaylist != null) {
+                val isPlaylistDownloading = uiState.activeDownload.isDownloading && uiState.activeDownload.playlistId == uiState.selectedPlaylist!!.id
+                val isPlaylistDownloaded = uiState.downloadedPlaylistIds.contains(uiState.selectedPlaylist!!.id)
                 PlaylistDetailScreen(
                     playlist = uiState.selectedPlaylist!!,
                     currentTrackId = uiState.currentTrack.id,
@@ -187,7 +198,37 @@ fun KoiApp(
                     },
                     onLikeTrackClick = { track -> viewModel.toggleLike(track) },
                     onMoreTrackClick = { track -> viewModel.openAddToPlaylistDialog(track) },
-                    onAddSongsClick = { viewModel.openAddSongsSheet() }
+                    onAddSongsClick = { viewModel.openAddSongsSheet() },
+                    onEditPlaylistClick = { viewModel.openEditPlaylistDialog(uiState.selectedPlaylist!!) },
+                    onChangeCoverClick = { coverUri -> viewModel.updatePlaylistCover(uiState.selectedPlaylist!!.id, coverUri) },
+                    onRemoveTracks = { trackIds -> viewModel.removeTracksFromPlaylist(uiState.selectedPlaylist!!.id, trackIds) },
+                    isPlaylistDownloaded = isPlaylistDownloaded,
+                    isPlaylistDownloading = isPlaylistDownloading,
+                    downloadProgressFraction = uiState.activeDownload.progressFraction,
+                    downloadedTrackIds = uiState.downloadedSongIds,
+                    onDownloadPlaylistClick = { viewModel.requestDownloadPlaylist(uiState.selectedPlaylist!!) }
+                )
+            } else if (uiState.showDownloadManager) {
+                DownloadManagerScreen(
+                    downloadedSongs = uiState.downloadedSongs,
+                    downloadedPlaylists = uiState.downloadedPlaylists,
+                    activeDownload = uiState.activeDownload,
+                    totalSizeBytes = uiState.totalDownloadSizeBytes,
+                    currentTrackId = uiState.currentTrack.id,
+                    isPlaying = uiState.isPlaying,
+                    onBackClick = { viewModel.closeDownloadManager() },
+                    onTrackClick = { track, queue -> viewModel.playTrack(track, queue) },
+                    onPlayPlaylist = { playlist ->
+                        if (playlist.tracks.isNotEmpty()) {
+                            viewModel.playTrack(playlist.tracks.first(), playlist.tracks)
+                        }
+                    },
+                    onPlaylistClick = { playlist -> viewModel.openPlaylist(playlist) },
+                    onDeleteSong = { track -> viewModel.deleteDownloadedSong(track) },
+                    onDeletePlaylist = { playlist -> viewModel.removeDownloadedPlaylist(playlist.id) },
+                    onCancelActiveDownload = { viewModel.cancelPlaylistDownload() },
+                    onClearAllDownloads = { viewModel.clearAllDownloads() },
+                    onToggleLike = { track -> viewModel.toggleLike(track) }
                 )
             } else {
                 when (uiState.selectedTab) {
@@ -209,6 +250,7 @@ fun KoiApp(
                             onSelectStation = { station -> viewModel.playStation(station) },
                             onPlaylistClick = { playlist -> viewModel.openPlaylist(playlist) },
                             onSearchClick = { viewModel.selectTab(NavigationTab.SEARCH) },
+                            onOpenDownloadManager = { viewModel.openDownloadManager() },
                             onProfileClick = { viewModel.selectTab(NavigationTab.PROFILE) },
                             onSettingsClick = { viewModel.openSettings() },
                             onOpenFullScreen = { viewModel.openFullScreenPlayer() }
@@ -261,6 +303,7 @@ fun KoiApp(
                     NavigationTab.YOUR_LIBRARY -> {
                         LibraryScreen(
                             playlists = uiState.libraryPlaylists,
+                            userName = uiState.username,
                             onPlaylistClick = { playlist ->
                                 viewModel.openPlaylist(playlist)
                             },
@@ -270,16 +313,21 @@ fun KoiApp(
                             onDeletePlaylistClick = { playlist ->
                                 viewModel.deletePlaylist(playlist.id)
                             },
+                            onEditPlaylistClick = { playlist ->
+                                viewModel.openEditPlaylistDialog(playlist)
+                            },
                             onProfileClick = { viewModel.selectTab(NavigationTab.PROFILE) }
                         )
                     }
                     NavigationTab.PROFILE -> {
                         ProfileScreen(
+                            userName = uiState.username,
                             usageMetrics = usageMetrics,
                             sleepTimerRemainingSeconds = uiState.sleepTimerRemainingSeconds,
                             onClearCacheClick = { viewModel.clearCache() },
                             onRefreshMetricsClick = { viewModel.refreshUsageMetrics() },
-                            onSetSleepTimer = { viewModel.setSleepTimer(it) }
+                            onSetSleepTimer = { viewModel.setSleepTimer(it) },
+                            onUpdateUsername = { viewModel.updateUsername(it) }
                         )
                     }
                 }
@@ -346,6 +394,8 @@ fun KoiApp(
                 onRepeatClick = { viewModel.toggleRepeat() },
                 onSeek = { viewModel.seekTo(it) },
                 isDownloaded = uiState.isDownloaded,
+                isDownloading = uiState.activeDownload.isDownloading && uiState.activeDownload.currentItemTitle == uiState.currentTrack.title,
+                downloadProgressFraction = uiState.activeDownload.progressFraction,
                 isEightDActive = isEightDActive,
                 eightDLabel = eightDLabel,
                 activeProfileName = activeProfileName,
@@ -483,6 +533,37 @@ fun KoiApp(
             )
         }
 
+        // Edit Playlist Dialog
+        if (uiState.showEditPlaylistDialog && uiState.playlistToEdit != null) {
+            EditPlaylistDialog(
+                playlist = uiState.playlistToEdit!!,
+                onDismiss = { viewModel.closeEditPlaylistDialog() },
+                onSave = { newTitle, newDescription, newCoverUri ->
+                    viewModel.updatePlaylistDetails(
+                        playlistId = uiState.playlistToEdit!!.id,
+                        newTitle = newTitle,
+                        newDescription = newDescription,
+                        newCoverUriString = newCoverUri
+                    )
+                    viewModel.closeEditPlaylistDialog()
+                }
+            )
+        }
+
+        // Download Quality & Format Selection Modal Bottom Sheet
+        if (uiState.showDownloadOptionsSheet && (uiState.downloadOptionsTargetTrack != null || uiState.downloadOptionsTargetPlaylist != null)) {
+            DownloadQualitySheet(
+                track = uiState.downloadOptionsTargetTrack,
+                playlist = uiState.downloadOptionsTargetPlaylist,
+                initialFormat = uiState.preferredDownloadFormat,
+                initialQuality = uiState.preferredDownloadQuality,
+                onDismiss = { viewModel.closeDownloadOptionsSheet() },
+                onConfirmDownload = { format, quality ->
+                    viewModel.confirmDownload(format, quality)
+                }
+            )
+        }
+
         // Add to Playlist Dialog
         uiState.trackForPlaylistMenu?.let { trackToAdd ->
             val customPlaylists = uiState.libraryPlaylists.filter { !it.isLikedSongs }
@@ -540,6 +621,55 @@ fun KoiApp(
                         }
                     } else {
                         Column(modifier = Modifier.fillMaxWidth()) {
+                            // Row to download track with format & quality
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        viewModel.closeAddToPlaylistDialog()
+                                        viewModel.requestDownloadTrack(trackToAdd)
+                                    }
+                                    .padding(vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(SpotifySurfaceHighlight),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_download),
+                                        contentDescription = "Download song",
+                                        tint = RogGoldPrimary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "Download song",
+                                        fontSize = 15.sp,
+                                        fontFamily = CircularFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        color = SpotifyTextPrimary
+                                    )
+                                    Text(
+                                        text = "Select format, quality & download size",
+                                        fontSize = 12.sp,
+                                        fontFamily = CircularFontFamily,
+                                        color = SpotifyTextSecondary
+                                    )
+                                }
+                            }
+
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 6.dp),
+                                color = SpotifyDivider
+                            )
+
                             // Row to create new playlist
                             Row(
                                 modifier = Modifier
@@ -696,6 +826,18 @@ fun KoiApp(
                     }
                 },
                 containerColor = SpotifySurface
+            )
+        }
+
+        // Initial First-Time Install Username Dialog
+        if (uiState.showInitialUsernameDialog) {
+            InitialUsernameDialog(
+                onConfirm = { username ->
+                    viewModel.submitInitialUsername(username)
+                },
+                onDismiss = {
+                    viewModel.skipInitialUsername()
+                }
             )
         }
     }

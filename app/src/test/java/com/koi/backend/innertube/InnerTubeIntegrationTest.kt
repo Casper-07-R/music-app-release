@@ -31,6 +31,19 @@ class InnerTubeIntegrationTest {
         assertNotNull("Direct stream should be resolved", stream)
         assertTrue("Stream URL should be googlevideo", stream!!.streamUrl.contains("googlevideo.com"))
         assertTrue("Format should be audio", stream.mimeType.startsWith("audio/"))
+
+        // Test downloading the first chunk
+        val req = okhttp3.Request.Builder()
+            .url(stream.streamUrl)
+            .header("User-Agent", stream.userAgent ?: InnerTubeClient.VISIONOS_USER_AGENT)
+            .header("Range", "bytes=0-65535")
+            .build()
+        val resp = client.streamingOkHttpClient.newCall(req).execute()
+        println("Stream HTTP response: code=${resp.code}, msg=${resp.message}, len=${resp.body?.contentLength()}")
+        assertTrue("Stream download must succeed (200 or 206)", resp.code in 200..206)
+        val bytes = resp.body?.bytes()
+        assertNotNull(bytes)
+        assertTrue(bytes!!.isNotEmpty())
     }
 
     @Test

@@ -601,7 +601,8 @@ class InnerTubeClient(
                     expiresInSeconds = expiresInSeconds,
                     loudnessDb = loudnessDb,
                     userAgent = client.userAgent,
-                    clientName = client.key
+                    clientName = client.key,
+                    contentLength = format.get("contentLength")?.asString?.toLongOrNull()
                 )
                 return stream to score
             } else {

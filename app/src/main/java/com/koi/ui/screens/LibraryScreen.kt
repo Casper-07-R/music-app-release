@@ -29,13 +29,16 @@ import com.koi.ui.theme.*
 @Composable
 fun LibraryScreen(
     playlists: List<Playlist>,
+    userName: String = "Casper",
     onPlaylistClick: (Playlist) -> Unit,
     onCreatePlaylistClick: () -> Unit,
     onDeletePlaylistClick: (Playlist) -> Unit,
+    onEditPlaylistClick: (Playlist) -> Unit = {},
     onProfileClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedFilter by remember { mutableStateOf("All") }
+    val initial = userName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "U"
 
     LazyColumn(
         modifier = modifier
@@ -68,7 +71,7 @@ fun LibraryScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "C",
+                                text = initial,
                                 fontSize = 14.sp,
                                 fontFamily = CircularFontFamily,
                                 fontWeight = FontWeight.Bold,
@@ -171,6 +174,17 @@ fun LibraryScreen(
                 }
 
                 if (!playlist.isLikedSongs) {
+                    IconButton(
+                        onClick = { onEditPlaylistClick(playlist) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_edit),
+                            contentDescription = "Edit",
+                            tint = RogTextSecondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                     IconButton(
                         onClick = { onDeletePlaylistClick(playlist) },
                         modifier = Modifier.size(32.dp)

@@ -51,7 +51,8 @@ fun HomeScreen(
     onOpenSleepTimer: () -> Unit,
     onSelectStation: (SoundStation) -> Unit,
     onPlaylistClick: (Playlist) -> Unit,
-    onSearchClick: () -> Unit,
+    onSearchClick: () -> Unit = {},
+    onOpenDownloadManager: () -> Unit = {},
     onProfileClick: () -> Unit,
     onSettingsClick: () -> Unit = onProfileClick,
     onOpenFullScreen: () -> Unit,
@@ -152,18 +153,20 @@ fun HomeScreen(
                             }
                         }
 
-                        // Search Shortcut
+                        // Download Manager Shortcut (Replaces Search near Settings)
+                        val isDownloading = uiState.activeDownload.isDownloading
                         Box(
                             modifier = Modifier
                                 .size(34.dp)
                                 .clip(CircleShape)
-                                .clickable { onSearchClick() },
+                                .background(if (isDownloading) RogSurfaceHighlight else RogSurfaceHighlight.copy(alpha = 0.7f))
+                                .clickable { onOpenDownloadManager() },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                painter = painterResource(id = R.drawable.ic_search),
-                                contentDescription = "Search",
-                                tint = RogTextSecondary,
+                                painter = painterResource(id = R.drawable.ic_download),
+                                contentDescription = "Download Manager",
+                                tint = if (isDownloading) RogGoldPrimary else RogTextPrimary,
                                 modifier = Modifier.size(19.dp)
                             )
                         }

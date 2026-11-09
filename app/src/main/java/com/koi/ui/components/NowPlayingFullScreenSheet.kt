@@ -58,6 +58,8 @@ fun NowPlayingFullScreenSheet(
     onRepeatClick: () -> Unit,
     onSeek: (Float) -> Unit,
     isDownloaded: Boolean = false,
+    isDownloading: Boolean = false,
+    downloadProgressFraction: Float = 0f,
     isEightDActive: Boolean = false,
     eightDLabel: String = "8D",
     activeProfileName: String = "",
@@ -304,16 +306,36 @@ fun NowPlayingFullScreenSheet(
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         // Download
-                        IconButton(
-                            onClick = onDownloadClick,
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_download),
-                                contentDescription = "Download",
-                                tint = if (isDownloaded) RogTextGold else RogTextMuted,
-                                modifier = Modifier.size(20.dp)
-                            )
+                        if (isDownloading) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .clickable { onDownloadClick() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    progress = { downloadProgressFraction },
+                                    modifier = Modifier.size(20.dp),
+                                    color = RogGoldPrimary,
+                                    strokeWidth = 2.dp,
+                                    trackColor = RogSurfaceDark
+                                )
+                            }
+                        } else {
+                            IconButton(
+                                onClick = onDownloadClick,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (isDownloaded) R.drawable.ic_check else R.drawable.ic_download
+                                    ),
+                                    contentDescription = "Download",
+                                    tint = if (isDownloaded) RogGoldPrimary else RogTextMuted,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
 
                         // Like

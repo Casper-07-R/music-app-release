@@ -1,18 +1,23 @@
 package com.koi.ui.viewmodel
 
 import android.content.Context
+import android.widget.Toast
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koi.KoiApplication
 import com.koi.backend.audio.*
+import com.koi.backend.download.*
+import com.koi.backend.innertube.InnerTubeClient
 import com.koi.backend.innertube.SongItem
+import com.koi.backend.profile.UserProfileManager
 import com.koi.backend.update.AppUpdateManager
 import com.koi.backend.update.GitHubAsset
 import com.koi.backend.update.GitHubRelease
 import com.koi.backend.update.UpdateUiState
 import com.koi.ui.model.*
 import com.koi.ui.theme.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -36,6 +41,16 @@ data class UsageMetrics(
     val memoryUsedMb: Long = 0L,
     val memoryMaxMb: Long = 0L,
     val audioSessionId: Int = 0
+)
+
+data class ActiveDownloadState(
+    val isDownloading: Boolean = false,
+    val currentItemTitle: String = "",
+    val playlistId: String? = null,
+    val playlistTitle: String? = null,
+    val completedCount: Int = 0,
+    val totalCount: Int = 0,
+    val progressFraction: Float = 0f
 )
 
 data class PlaybackUiState(
@@ -70,10 +85,26 @@ data class PlaybackUiState(
     val showEqualizerSheet: Boolean = false,
     val selectedEqPreset: String = "Flat",
     val showSettingsScreen: Boolean = false,
+    val showDownloadManager: Boolean = false,
+    val downloadedSongs: List<Track> = emptyList(),
+    val downloadedPlaylists: List<Playlist> = emptyList(),
+    val downloadedSongIds: Set<String> = emptySet(),
+    val downloadedPlaylistIds: Set<String> = emptySet(),
+    val activeDownload: ActiveDownloadState = ActiveDownloadState(),
+    val totalDownloadSizeBytes: Long = 0L,
     val showAddSongsSheet: Boolean = false,
     val playlistSearchQuery: String = "",
     val playlistSearchResults: List<Track> = emptyList(),
-    val isSearchingForPlaylist: Boolean = false
+    val isSearchingForPlaylist: Boolean = false,
+    val showEditPlaylistDialog: Boolean = false,
+    val playlistToEdit: Playlist? = null,
+    val showDownloadOptionsSheet: Boolean = false,
+    val downloadOptionsTargetTrack: Track? = null,
+    val downloadOptionsTargetPlaylist: Playlist? = null,
+    val preferredDownloadFormat: AudioFormat = AudioFormat.M4A,
+    val preferredDownloadQuality: AudioQuality = AudioQuality.HIGH,
+    val username: String = UserProfileManager.DEFAULT_USERNAME,
+    val showInitialUsernameDialog: Boolean = false
 )
 
 class PlaybackViewModel : ViewModel() {
@@ -82,6 +113,7 @@ class PlaybackViewModel : ViewModel() {
     private val playerEngine = app.playerEngine
     private val innerTube = app.innerTube
     private val database = app.database
+    private val downloaderEngine = DownloaderEngine(app, innerTube, database)
 
     private val defaultTrack = Track(
         id = "34Na4j8AVgA",
@@ -139,7 +171,9 @@ class PlaybackViewModel : ViewModel() {
             currentTrack = initialTrack,
             currentPositionSeconds = playerEngine.currentPositionMs.value / 1000f,
             categories = defaultCategories,
-            soundStations = defaultSoundStations
+            soundStations = defaultSoundStations,
+            username = UserProfileManager.getUsername(app),
+            showInitialUsernameDialog = UserProfileManager.shouldPromptInitialUsername(app)
         )
     )
     val uiState: StateFlow<PlaybackUiState> = _uiState.asStateFlow()
@@ -298,6 +332,7 @@ class PlaybackViewModel : ViewModel() {
 
         // Load data from InnerTube & Database
         refreshLibrary()
+        refreshDownloads()
         loadHomeData()
         refreshUsageMetrics()
     }
@@ -420,7 +455,7 @@ class PlaybackViewModel : ViewModel() {
                 Playlist(
                     id = info.id,
                     title = info.title,
-                    description = "${tracks.size} songs",
+                    description = info.description ?: "${tracks.size} songs",
                     trackCount = tracks.size,
                     thumbnailUrl = info.coverUrl,
                     coverGradientStart = Color(0xFFFF6B35),
@@ -435,7 +470,16 @@ class PlaybackViewModel : ViewModel() {
                 addAll(customPlaylists)
             }
 
-            _uiState.update { it.copy(libraryPlaylists = all) }
+            _uiState.update { state ->
+                val updatedSelected = if (state.selectedPlaylist != null) {
+                    all.find { it.id == state.selectedPlaylist.id } ?: state.selectedPlaylist
+                } else null
+
+                state.copy(
+                    libraryPlaylists = all,
+                    selectedPlaylist = updatedSelected
+                )
+            }
         }
     }
 
@@ -487,7 +531,26 @@ class PlaybackViewModel : ViewModel() {
                     entry
                 }
             }
-            state.copy(currentTrack = updatedCurrent, searchHistory = updatedHistory)
+            val updatedSelected = if (state.selectedPlaylist?.isLikedSongs == true) {
+                val updatedLikedTracks = database.getLikedSongs().map { it.toTrack(isLiked = true) }
+                state.selectedPlaylist.copy(
+                    tracks = updatedLikedTracks,
+                    trackCount = updatedLikedTracks.size,
+                    thumbnailUrl = updatedLikedTracks.firstOrNull()?.thumbnailUrl
+                )
+            } else if (state.selectedPlaylist != null) {
+                val updatedPlaylistTracks = state.selectedPlaylist.tracks.map {
+                    if (it.id == track.id) it.copy(isLiked = isNowLiked) else it
+                }
+                state.selectedPlaylist.copy(tracks = updatedPlaylistTracks)
+            } else {
+                state.selectedPlaylist
+            }
+            state.copy(
+                currentTrack = updatedCurrent,
+                searchHistory = updatedHistory,
+                selectedPlaylist = updatedSelected
+            )
         }
         refreshLibrary()
     }
@@ -579,6 +642,37 @@ class PlaybackViewModel : ViewModel() {
         }
     }
 
+    // --- USER PROFILE & ONBOARDING ---
+
+    fun submitInitialUsername(username: String) {
+        val cleanName = username.trim()
+        val finalName = if (cleanName.isNotBlank()) cleanName else UserProfileManager.DEFAULT_USERNAME
+        UserProfileManager.saveUsername(app, finalName)
+        _uiState.update {
+            it.copy(
+                username = finalName,
+                showInitialUsernameDialog = false
+            )
+        }
+    }
+
+    fun skipInitialUsername() {
+        UserProfileManager.markPromptCompleted(app)
+        _uiState.update {
+            it.copy(showInitialUsernameDialog = false)
+        }
+    }
+
+    fun updateUsername(newUsername: String) {
+        val cleanName = newUsername.trim()
+        if (cleanName.isNotBlank()) {
+            UserProfileManager.saveUsername(app, cleanName)
+            _uiState.update {
+                it.copy(username = cleanName)
+            }
+        }
+    }
+
     // --- PLAYLIST MANAGEMENT ---
 
     fun openCreatePlaylistDialog() {
@@ -613,19 +707,30 @@ class PlaybackViewModel : ViewModel() {
     }
 
     fun addTrackToPlaylist(playlistId: String, track: Track) {
-        database.addTrackToPlaylist(playlistId, track.toSongItem())
-        closeAddToPlaylistDialog()
-        refreshLibrary()
-        // If current playlist is open, refresh it
-        if (_uiState.value.selectedPlaylist?.id == playlistId) {
-            val updatedTracks = database.getPlaylistTracks(playlistId).map { it.toTrack(database.isLiked(it.videoId)) }
-            _uiState.update {
-                it.copy(
-                    selectedPlaylist = it.selectedPlaylist?.copy(
-                        tracks = updatedTracks,
-                        trackCount = updatedTracks.size
+        viewModelScope.launch(Dispatchers.IO) {
+            database.addTrackToPlaylist(playlistId, track.toSongItem())
+            withContext(Dispatchers.Main) {
+                closeAddToPlaylistDialog()
+                Toast.makeText(app, "Added \"${track.title}\" to playlist", Toast.LENGTH_SHORT).show()
+            }
+            refreshLibrary()
+            val currentSelected = _uiState.value.selectedPlaylist
+            if (currentSelected?.id == playlistId) {
+                val updatedTracks = database.getPlaylistTracks(playlistId).map { it.toTrack(database.isLiked(it.videoId)) }
+                val localInfo = database.getPlaylistInfo(playlistId)
+                _uiState.update {
+                    it.copy(
+                        selectedPlaylist = it.selectedPlaylist?.let { pl ->
+                            pl.copy(
+                                title = localInfo?.title ?: pl.title,
+                                description = localInfo?.description ?: pl.description,
+                                thumbnailUrl = localInfo?.coverUrl ?: pl.thumbnailUrl ?: track.thumbnailUrl,
+                                tracks = updatedTracks,
+                                trackCount = updatedTracks.size
+                            )
+                        }
                     )
-                )
+                }
             }
         }
     }
@@ -633,24 +738,68 @@ class PlaybackViewModel : ViewModel() {
     fun createPlaylistAndAddTrack(title: String, track: Track) {
         val trimmed = title.trim()
         if (trimmed.isBlank()) return
-        val playlistId = database.createPlaylist(trimmed)
-        database.addTrackToPlaylist(playlistId, track.toSongItem())
-        closeAddToPlaylistDialog()
-        refreshLibrary()
+        viewModelScope.launch(Dispatchers.IO) {
+            val playlistId = database.createPlaylist(trimmed)
+            database.addTrackToPlaylist(playlistId, track.toSongItem())
+            withContext(Dispatchers.Main) {
+                closeAddToPlaylistDialog()
+                Toast.makeText(app, "Created playlist \"$trimmed\" and added song", Toast.LENGTH_SHORT).show()
+            }
+            refreshLibrary()
+        }
     }
 
     fun removeTrackFromPlaylist(playlistId: String, track: Track) {
-        database.removeTrackFromPlaylist(playlistId, track.id)
-        refreshLibrary()
-        if (_uiState.value.selectedPlaylist?.id == playlistId) {
-            val updatedTracks = database.getPlaylistTracks(playlistId).map { it.toTrack(database.isLiked(it.videoId)) }
-            _uiState.update {
-                it.copy(
-                    selectedPlaylist = it.selectedPlaylist?.copy(
-                        tracks = updatedTracks,
-                        trackCount = updatedTracks.size
+        viewModelScope.launch(Dispatchers.IO) {
+            database.removeTrackFromPlaylist(playlistId, track.id)
+            withContext(Dispatchers.Main) {
+                Toast.makeText(app, "Removed from playlist", Toast.LENGTH_SHORT).show()
+            }
+            refreshLibrary()
+            val currentSelected = _uiState.value.selectedPlaylist
+            if (currentSelected?.id == playlistId) {
+                val updatedTracks = database.getPlaylistTracks(playlistId).map { it.toTrack(database.isLiked(it.videoId)) }
+                _uiState.update {
+                    it.copy(
+                        selectedPlaylist = it.selectedPlaylist?.copy(
+                            tracks = updatedTracks,
+                            trackCount = updatedTracks.size
+                        )
                     )
-                )
+                }
+            }
+        }
+    }
+
+    fun removeTracksFromPlaylist(playlistId: String, trackIds: Set<String>) {
+        if (trackIds.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val isLiked = playlistId == "liked_songs" || _uiState.value.selectedPlaylist?.isLikedSongs == true
+            if (isLiked) {
+                database.removeLikedSongs(trackIds)
+            } else {
+                database.removeTracksFromPlaylist(playlistId, trackIds)
+            }
+            refreshLibrary()
+            val currentSelected = _uiState.value.selectedPlaylist
+            if (currentSelected?.id == playlistId) {
+                val updatedTracks = if (isLiked) {
+                    database.getLikedSongs().map { it.toTrack(isLiked = true) }
+                } else {
+                    database.getPlaylistTracks(playlistId).map { it.toTrack(database.isLiked(it.videoId)) }
+                }
+                _uiState.update {
+                    it.copy(
+                        selectedPlaylist = it.selectedPlaylist?.copy(
+                            tracks = updatedTracks,
+                            trackCount = updatedTracks.size
+                        )
+                    )
+                }
+            }
+            withContext(Dispatchers.Main) {
+                val count = trackIds.size
+                Toast.makeText(app, "Removed $count song${if (count > 1) "s" else ""} from playlist", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -666,7 +815,7 @@ class PlaybackViewModel : ViewModel() {
     }
 
     fun selectTab(tab: NavigationTab) {
-        _uiState.update { it.copy(selectedTab = tab, selectedPlaylist = null, showSettingsScreen = false) }
+        _uiState.update { it.copy(selectedTab = tab, selectedPlaylist = null, showSettingsScreen = false, showDownloadManager = false) }
         if (tab == NavigationTab.PROFILE) {
             refreshUsageMetrics()
         } else if (tab == NavigationTab.SEARCH) {
@@ -742,23 +891,138 @@ class PlaybackViewModel : ViewModel() {
 
     fun openPlaylist(playlist: Playlist) {
         viewModelScope.launch {
+            val localInfo = database.getPlaylistInfo(playlist.id)
+            val currentTitle = localInfo?.title ?: playlist.title
+            val currentDesc = localInfo?.description ?: playlist.description
+            val currentCover = localInfo?.coverUrl ?: playlist.thumbnailUrl
+
             val tracks = if (playlist.isLikedSongs) {
                 database.getLikedSongs().map { it.toTrack(isLiked = true) }
             } else if (playlist.id.startsWith("shelf_")) {
-                playlist.tracks
+                val downloaded = database.getDownloadedPlaylistTracks(playlist.id)
+                if (downloaded.isNotEmpty()) {
+                    downloaded.map { it.toTrack(database.isLiked(it.videoId)) }
+                } else {
+                    playlist.tracks
+                }
             } else {
-                database.getPlaylistTracks(playlist.id).map { it.toTrack(database.isLiked(it.videoId)) }
+                val localTracks = database.getPlaylistTracks(playlist.id)
+                if (localTracks.isNotEmpty()) {
+                    localTracks.map { it.toTrack(database.isLiked(it.videoId)) }
+                } else {
+                    val downloaded = database.getDownloadedPlaylistTracks(playlist.id)
+                    if (downloaded.isNotEmpty()) {
+                        downloaded.map { it.toTrack(database.isLiked(it.videoId)) }
+                    } else {
+                        playlist.tracks
+                    }
+                }
             }
 
             _uiState.update {
                 it.copy(
                     selectedPlaylist = playlist.copy(
+                        title = currentTitle,
+                        description = currentDesc,
+                        thumbnailUrl = currentCover,
                         tracks = tracks,
                         trackCount = tracks.size
                     ),
                     showSettingsScreen = false
                 )
             }
+        }
+    }
+
+    fun openEditPlaylistDialog(playlist: Playlist) {
+        _uiState.update { it.copy(showEditPlaylistDialog = true, playlistToEdit = playlist) }
+    }
+
+    fun closeEditPlaylistDialog() {
+        _uiState.update { it.copy(showEditPlaylistDialog = false, playlistToEdit = null) }
+    }
+
+    fun renamePlaylist(playlistId: String, newTitle: String) {
+        val trimmed = newTitle.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            database.renamePlaylist(playlistId, trimmed)
+            refreshLibrary()
+            if (_uiState.value.selectedPlaylist?.id == playlistId) {
+                _uiState.update {
+                    it.copy(selectedPlaylist = it.selectedPlaylist?.copy(title = trimmed))
+                }
+            }
+            withContext(Dispatchers.Main) {
+                Toast.makeText(app, "Playlist renamed to \"$trimmed\"", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun updatePlaylistCover(playlistId: String, imageUriString: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val savedCoverPath = saveCoverImageToInternalStorage(imageUriString, playlistId)
+            database.updatePlaylistCover(playlistId, savedCoverPath)
+            refreshLibrary()
+            if (_uiState.value.selectedPlaylist?.id == playlistId) {
+                _uiState.update {
+                    it.copy(selectedPlaylist = it.selectedPlaylist?.copy(thumbnailUrl = savedCoverPath))
+                }
+            }
+            withContext(Dispatchers.Main) {
+                Toast.makeText(app, "Playlist cover updated", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun updatePlaylistDetails(playlistId: String, newTitle: String, newDescription: String?, newCoverUriString: String?) {
+        val trimmedTitle = newTitle.trim().ifEmpty { "My Playlist" }
+        viewModelScope.launch(Dispatchers.IO) {
+            val savedCoverPath = if (!newCoverUriString.isNullOrEmpty() && (newCoverUriString.startsWith("content://") || newCoverUriString.startsWith("file://"))) {
+                saveCoverImageToInternalStorage(newCoverUriString, playlistId)
+            } else {
+                newCoverUriString
+            }
+
+            database.updatePlaylist(playlistId, trimmedTitle, newDescription, savedCoverPath)
+            refreshLibrary()
+            if (_uiState.value.selectedPlaylist?.id == playlistId) {
+                _uiState.update {
+                    it.copy(
+                        selectedPlaylist = it.selectedPlaylist?.let { pl ->
+                            pl.copy(
+                                title = trimmedTitle,
+                                description = newDescription ?: pl.description,
+                                thumbnailUrl = savedCoverPath ?: pl.thumbnailUrl
+                            )
+                        }
+                    )
+                }
+            }
+            withContext(Dispatchers.Main) {
+                Toast.makeText(app, "Playlist details updated", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun saveCoverImageToInternalStorage(uriString: String, playlistId: String): String {
+        return try {
+            val uri = android.net.Uri.parse(uriString)
+            val coversDir = java.io.File(app.filesDir, "covers").apply { mkdirs() }
+            // Clean up any existing cover files for this playlist to prevent storage bloat and stale cache
+            coversDir.listFiles()?.filter { it.name.startsWith("playlist_${playlistId}") }?.forEach {
+                try { it.delete() } catch (e: Exception) {}
+            }
+            val destFile = java.io.File(coversDir, "playlist_${playlistId}_${System.currentTimeMillis()}.jpg")
+            app.contentResolver.openInputStream(uri)?.use { input ->
+                java.io.FileOutputStream(destFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            destFile.absolutePath
+        } catch (e: Exception) {
+            android.util.Log.w("PlaybackViewModel", "Failed to save cover image", e)
+            uriString
         }
     }
 
@@ -980,45 +1244,392 @@ class PlaybackViewModel : ViewModel() {
         setSleepTimer(0)
     }
 
-    // --- DOWNLOAD MANAGEMENT ---
+    // --- DOWNLOAD MANAGEMENT & OFFLINE STREAMING ---
 
-    fun toggleDownload(track: Track) {
+    private var playlistDownloadJob: Job? = null
+
+    fun openDownloadManager() {
+        refreshDownloads()
+        _uiState.update { it.copy(showDownloadManager = true, showSettingsScreen = false) }
+    }
+
+    fun closeDownloadManager() {
+        _uiState.update { it.copy(showDownloadManager = false) }
+    }
+
+    fun refreshDownloads() {
         viewModelScope.launch(Dispatchers.IO) {
-            if (database.isDownloaded(track.id)) {
-                database.removeDownload(track.id)
-                try {
-                    val file = File(app.filesDir, "downloads/${track.id}.mp3")
-                    if (file.exists()) file.delete()
-                } catch (e: Exception) {}
-                _uiState.update { it.copy(isDownloaded = false) }
-            } else {
-                try {
-                    val cachedStream = database.getCachedStream(track.id)
-                    val url = cachedStream?.streamUrl ?: innerTube.resolveStream(track.id)?.streamUrl
-                    if (url != null) {
-                        val downloadsDir = File(app.filesDir, "downloads").apply { mkdirs() }
-                        val file = File(downloadsDir, "${track.id}.mp3")
-                        val request = okhttp3.Request.Builder().url(url).build()
-                        val response = innerTube.okHttpClient.newCall(request).execute()
-                        if (response.isSuccessful) {
-                            response.body?.byteStream()?.use { input ->
-                                file.outputStream().use { output ->
-                                    input.copyTo(output)
-                                }
-                            }
-                            database.saveDownload(track.toSongItem(), file.absolutePath)
-                            _uiState.update { it.copy(isDownloaded = true) }
-                        }
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.w("PlaybackViewModel", "Download failed for ${track.id}", e)
+            val songs = database.getDownloadedSongs().map {
+                it.toTrack(isLiked = database.isLiked(it.videoId), isDownloaded = true)
+            }
+            val playlists = database.getDownloadedPlaylists()
+            val videoIds = database.getAllDownloadedVideoIds()
+            val playlistIds = database.getAllDownloadedPlaylistIds()
+            val currentDownloaded = database.isDownloaded(_uiState.value.currentTrack.id)
+            val sizeBytes = database.getTotalDownloadedSizeBytes(app)
+
+            _uiState.update {
+                it.copy(
+                    downloadedSongs = songs,
+                    downloadedPlaylists = playlists,
+                    downloadedSongIds = videoIds,
+                    downloadedPlaylistIds = playlistIds,
+                    isDownloaded = currentDownloaded,
+                    totalDownloadSizeBytes = sizeBytes
+                )
+            }
+        }
+    }
+
+    private val downloadPrefs = app.getSharedPreferences("koi_download_prefs", Context.MODE_PRIVATE)
+
+    fun getSavedDownloadFormat(): AudioFormat {
+        val name = downloadPrefs.getString("preferred_format", AudioFormat.M4A.name)
+        return try { AudioFormat.valueOf(name!!) } catch (e: Exception) { AudioFormat.M4A }
+    }
+
+    fun getSavedDownloadQuality(): AudioQuality {
+        val name = downloadPrefs.getString("preferred_quality", AudioQuality.HIGH.name)
+        return try { AudioQuality.valueOf(name!!) } catch (e: Exception) { AudioQuality.HIGH }
+    }
+
+    fun saveDownloadPreferences(format: AudioFormat, quality: AudioQuality) {
+        downloadPrefs.edit()
+            .putString("preferred_format", format.name)
+            .putString("preferred_quality", quality.name)
+            .apply()
+        _uiState.update {
+            it.copy(
+                preferredDownloadFormat = format,
+                preferredDownloadQuality = quality
+            )
+        }
+    }
+
+    fun requestDownloadTrack(track: Track) {
+        if (_uiState.value.downloadedSongIds.contains(track.id) && database.isDownloaded(track.id)) {
+            deleteDownloadedSong(track)
+            viewModelScope.launch(Dispatchers.Main) {
+                Toast.makeText(app, "Removed \"${track.title}\" from downloads", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+
+        if (_uiState.value.activeDownload.isDownloading && _uiState.value.activeDownload.currentItemTitle == track.title) {
+            cancelPlaylistDownload()
+            viewModelScope.launch(Dispatchers.Main) {
+                Toast.makeText(app, "Download cancelled", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+
+        _uiState.update {
+            it.copy(
+                showDownloadOptionsSheet = true,
+                downloadOptionsTargetTrack = track,
+                downloadOptionsTargetPlaylist = null,
+                preferredDownloadFormat = getSavedDownloadFormat(),
+                preferredDownloadQuality = getSavedDownloadQuality()
+            )
+        }
+    }
+
+    fun requestDownloadPlaylist(playlist: Playlist) {
+        if (_uiState.value.downloadedPlaylistIds.contains(playlist.id)) {
+            removeDownloadedPlaylist(playlist.id)
+            viewModelScope.launch(Dispatchers.Main) {
+                Toast.makeText(app, "Removed playlist from downloads", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+
+        if (_uiState.value.activeDownload.isDownloading && _uiState.value.activeDownload.playlistId == playlist.id) {
+            cancelPlaylistDownload()
+            viewModelScope.launch(Dispatchers.Main) {
+                Toast.makeText(app, "Download cancelled", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+
+        _uiState.update {
+            it.copy(
+                showDownloadOptionsSheet = true,
+                downloadOptionsTargetTrack = null,
+                downloadOptionsTargetPlaylist = playlist,
+                preferredDownloadFormat = getSavedDownloadFormat(),
+                preferredDownloadQuality = getSavedDownloadQuality()
+            )
+        }
+    }
+
+    fun closeDownloadOptionsSheet() {
+        _uiState.update {
+            it.copy(
+                showDownloadOptionsSheet = false,
+                downloadOptionsTargetTrack = null,
+                downloadOptionsTargetPlaylist = null
+            )
+        }
+    }
+
+    fun confirmDownload(format: AudioFormat, quality: AudioQuality) {
+        val targetTrack = _uiState.value.downloadOptionsTargetTrack
+        val targetPlaylist = _uiState.value.downloadOptionsTargetPlaylist
+        closeDownloadOptionsSheet()
+        saveDownloadPreferences(format, quality)
+
+        if (targetTrack != null) {
+            downloadTrack(targetTrack, format, quality)
+        } else if (targetPlaylist != null) {
+            downloadPlaylist(targetPlaylist, format, quality)
+        }
+    }
+
+    fun downloadTrack(
+        track: Track,
+        format: AudioFormat = getSavedDownloadFormat(),
+        quality: AudioQuality = getSavedDownloadQuality()
+    ) {
+        if (_uiState.value.downloadedSongIds.contains(track.id) && database.isDownloaded(track.id)) {
+            deleteDownloadedSong(track)
+            viewModelScope.launch(Dispatchers.Main) {
+                Toast.makeText(app, "Removed \"${track.title}\" from downloads", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+
+        if (_uiState.value.activeDownload.isDownloading && _uiState.value.activeDownload.currentItemTitle == track.title) {
+            cancelPlaylistDownload()
+            viewModelScope.launch(Dispatchers.Main) {
+                Toast.makeText(app, "Download cancelled", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.Main) {
+            Toast.makeText(app, "Downloading \"${track.title}\" (${format.displayName} • ${quality.displayName})...", Toast.LENGTH_SHORT).show()
+        }
+
+        playlistDownloadJob?.cancel()
+        playlistDownloadJob = viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update {
+                it.copy(
+                    activeDownload = ActiveDownloadState(
+                        isDownloading = true,
+                        currentItemTitle = track.title,
+                        totalCount = 1,
+                        completedCount = 0,
+                        progressFraction = 0f
+                    )
+                )
+            }
+
+            val file = downloaderEngine.downloadTrack(track, format, quality) { progress ->
+                _uiState.update {
+                    it.copy(
+                        activeDownload = it.activeDownload.copy(
+                            progressFraction = progress.progressFraction,
+                            currentItemTitle = track.title
+                        )
+                    )
+                }
+            }
+
+            _uiState.update {
+                it.copy(activeDownload = ActiveDownloadState(isDownloading = false))
+            }
+            refreshDownloads()
+
+            withContext(Dispatchers.Main) {
+                if (file != null && file.exists()) {
+                    Toast.makeText(app, "Downloaded \"${track.title}\" (${format.displayName})", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(app, "Failed to download \"${track.title}\"", Toast.LENGTH_SHORT).show()
                 }
             }
         }
     }
 
-    private fun SongItem.toTrack(isLiked: Boolean): Track {
-        return Track.fromSongItem(this, isLiked)
+    fun toggleDownload(track: Track) {
+        requestDownloadTrack(track)
+    }
+
+    fun downloadPlaylist(
+        playlist: Playlist,
+        format: AudioFormat = getSavedDownloadFormat(),
+        quality: AudioQuality = getSavedDownloadQuality()
+    ) {
+        if (_uiState.value.activeDownload.isDownloading && _uiState.value.activeDownload.playlistId == playlist.id) {
+            cancelPlaylistDownload()
+            viewModelScope.launch(Dispatchers.Main) {
+                Toast.makeText(app, "Download cancelled", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+
+        if (_uiState.value.downloadedPlaylistIds.contains(playlist.id)) {
+            removeDownloadedPlaylist(playlist.id)
+            viewModelScope.launch(Dispatchers.Main) {
+                Toast.makeText(app, "Removed playlist from downloads", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            val tracksToDownload = if (playlist.tracks.isNotEmpty()) {
+                playlist.tracks
+            } else if (playlist.isLikedSongs) {
+                withContext(Dispatchers.IO) { database.getLikedSongs().map { it.toTrack(true) } }
+            } else {
+                val localTracks = withContext(Dispatchers.IO) { database.getPlaylistTracks(playlist.id) }
+                if (localTracks.isNotEmpty()) localTracks.map { it.toTrack(database.isLiked(it.videoId)) }
+                else withContext(Dispatchers.IO) { database.getDownloadedPlaylistTracks(playlist.id).map { it.toTrack(database.isLiked(it.videoId)) } }
+            }
+
+            if (tracksToDownload.isEmpty()) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(app, "Playlist is empty", Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+
+            withContext(Dispatchers.Main) {
+                Toast.makeText(app, "Downloading playlist \"${playlist.title}\" (${tracksToDownload.size} songs • ${format.displayName})...", Toast.LENGTH_SHORT).show()
+            }
+
+            playlistDownloadJob?.cancel()
+            playlistDownloadJob = viewModelScope.launch(Dispatchers.IO) {
+                val total = tracksToDownload.size
+                _uiState.update {
+                    it.copy(
+                        activeDownload = ActiveDownloadState(
+                            isDownloading = true,
+                            playlistId = playlist.id,
+                            playlistTitle = playlist.title,
+                            totalCount = total,
+                            completedCount = 0,
+                            progressFraction = 0f
+                        )
+                    )
+                }
+
+                val songItems = mutableListOf<SongItem>()
+
+                for ((index, track) in tracksToDownload.withIndex()) {
+                    if (!isActive) break
+
+                    val songItem = track.toSongItem()
+                    songItems.add(songItem)
+
+                    val existingPath = database.getDownloadedFilePath(track.id)
+                    if (existingPath != null && File(existingPath).exists() && File(existingPath).length() > 0) {
+                        _uiState.update {
+                            it.copy(
+                                activeDownload = it.activeDownload.copy(
+                                    currentItemTitle = track.title,
+                                    completedCount = index + 1,
+                                    progressFraction = (index + 1).toFloat() / total
+                                )
+                            )
+                        }
+                        continue
+                    }
+
+                    _uiState.update {
+                        it.copy(
+                            activeDownload = it.activeDownload.copy(
+                                currentItemTitle = track.title,
+                                completedCount = index,
+                                progressFraction = index.toFloat() / total
+                            )
+                        )
+                    }
+
+                    downloaderEngine.downloadTrack(track, format, quality) { progress ->
+                        val trackContribution = progress.progressFraction / total
+                        val currentBase = index.toFloat() / total
+                        _uiState.update {
+                            it.copy(
+                                activeDownload = it.activeDownload.copy(
+                                    progressFraction = (currentBase + trackContribution).coerceIn(0f, 1f),
+                                    currentItemTitle = track.title
+                                )
+                            )
+                        }
+                    }
+
+                    _uiState.update {
+                        it.copy(
+                            activeDownload = it.activeDownload.copy(
+                                completedCount = index + 1,
+                                progressFraction = (index + 1).toFloat() / total
+                            )
+                        )
+                    }
+                }
+
+                if (isActive) {
+                    database.saveDownloadedPlaylist(playlist, songItems)
+                    _uiState.update {
+                        it.copy(activeDownload = ActiveDownloadState(isDownloading = false))
+                    }
+                    refreshDownloads()
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(app, "Downloaded playlist \"${playlist.title}\"", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    fun cancelPlaylistDownload() {
+        playlistDownloadJob?.cancel()
+        playlistDownloadJob = null
+        _uiState.update {
+            it.copy(activeDownload = ActiveDownloadState(isDownloading = false))
+        }
+        refreshDownloads()
+    }
+
+    fun deleteDownloadedSong(track: Track) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val path = database.getDownloadedFilePath(track.id)
+            database.removeDownload(track.id)
+            try {
+                if (path != null) {
+                    val f = File(path)
+                    if (f.exists()) f.delete()
+                }
+                File(app.filesDir, "downloads/${track.id}.m4a").delete()
+                File(app.filesDir, "downloads/${track.id}.mp3").delete()
+                File(app.filesDir, "downloads/temp/${track.id}.raw").delete()
+            } catch (_: Exception) {}
+            refreshDownloads()
+            if (_uiState.value.currentTrack.id == track.id) {
+                _uiState.update { it.copy(isDownloaded = false) }
+            }
+        }
+    }
+
+    fun removeDownloadedPlaylist(playlistId: String, deleteAudioFiles: Boolean = true) {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.removeDownloadedPlaylist(playlistId, deleteAudioFiles = deleteAudioFiles, context = app)
+            refreshDownloads()
+        }
+    }
+
+    fun clearAllDownloads() {
+        viewModelScope.launch(Dispatchers.IO) {
+            cancelPlaylistDownload()
+            database.clearAllDownloads(app)
+            refreshDownloads()
+            _uiState.update { it.copy(isDownloaded = false) }
+        }
+    }
+
+    private fun SongItem.toTrack(isLiked: Boolean, isDownloaded: Boolean = false): Track {
+        val downloaded = database.isDownloaded(this.videoId)
+        return Track.fromSongItem(this, isLiked = isLiked, isDownloaded = downloaded)
     }
 
     // --- APP UPDATE MANAGEMENT ---
@@ -1044,7 +1655,7 @@ class PlaybackViewModel : ViewModel() {
     // --- SETTINGS NAVIGATION & CONTROLS ---
 
     fun openSettings() {
-        _uiState.update { it.copy(showSettingsScreen = true, selectedPlaylist = null) }
+        _uiState.update { it.copy(showSettingsScreen = true, selectedPlaylist = null, showDownloadManager = false) }
     }
 
     fun closeSettings() {

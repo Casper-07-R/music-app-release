@@ -31,23 +31,39 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.koi.backend.audio.*
 import com.koi.ui.R
+import com.koi.ui.components.EditUsernameDialog
 import com.koi.ui.theme.*
 import com.koi.ui.viewmodel.UsageMetrics
 import kotlin.math.*
 
 @Composable
 fun ProfileScreen(
+    userName: String = "Casper",
     usageMetrics: UsageMetrics,
     sleepTimerRemainingSeconds: Int,
     onClearCacheClick: () -> Unit,
     onRefreshMetricsClick: () -> Unit,
     onSetSleepTimer: (Int) -> Unit,
+    onUpdateUsername: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    var showEditUsernameDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         onRefreshMetricsClick()
+    }
+
+    if (showEditUsernameDialog) {
+        EditUsernameDialog(
+            currentUsername = userName,
+            onDismiss = { showEditUsernameDialog = false },
+            onSave = { newName ->
+                onUpdateUsername(newName)
+                showEditUsernameDialog = false
+                Toast.makeText(context, "Username updated", Toast.LENGTH_SHORT).show()
+            }
+        )
     }
 
     LazyColumn(
@@ -66,7 +82,14 @@ fun ProfileScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { showEditUsernameDialog = true }
+                        .padding(4.dp)
+                ) {
+                    val initial = userName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "U"
                     Box(
                         modifier = Modifier
                             .size(56.dp)
@@ -75,7 +98,7 @@ fun ProfileScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "C",
+                            text = initial,
                             fontSize = 24.sp,
                             fontFamily = CircularFontFamily,
                             fontWeight = FontWeight.Bold,
@@ -86,13 +109,24 @@ fun ProfileScreen(
                     Spacer(modifier = Modifier.width(14.dp))
 
                     Column {
-                        Text(
-                            text = "Casper",
-                            fontSize = 20.sp,
-                            fontFamily = CircularFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            color = RogTextPrimary
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = userName,
+                                fontSize = 20.sp,
+                                fontFamily = CircularFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = RogTextPrimary
+                            )
+
+                            Spacer(modifier = Modifier.width(6.dp))
+
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_edit),
+                                contentDescription = "Edit username",
+                                tint = RogTextSecondary,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
 
                         Spacer(modifier = Modifier.height(2.dp))
 

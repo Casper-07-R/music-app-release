@@ -20,7 +20,8 @@ data class PlaybackStream(
     val expiresInSeconds: Long,
     val loudnessDb: Double? = null,
     val userAgent: String? = null,
-    val clientName: String = "VISIONOS"
+    val clientName: String = "VISIONOS",
+    val contentLength: Long? = null
 )
 
 data class NextResult(

@@ -14,6 +14,7 @@ data class Track(
     val coverGradientEnd: Color = Color(0xFF07181E),
     val thumbnailUrl: String? = null,
     val isLiked: Boolean = false,
+    val isDownloaded: Boolean = false,
     val lyrics: List<String> = emptyList(),
     val syncedLyrics: List<LyricLine> = emptyList()
 ) {
@@ -29,7 +30,12 @@ data class Track(
     }
 
     companion object {
-        fun fromSongItem(item: SongItem, isLiked: Boolean = false, syncedLyrics: List<LyricLine> = emptyList()): Track {
+        fun fromSongItem(
+            item: SongItem,
+            isLiked: Boolean = false,
+            isDownloaded: Boolean = false,
+            syncedLyrics: List<LyricLine> = emptyList()
+        ): Track {
             return Track(
                 id = item.videoId,
                 title = item.title,
@@ -38,6 +44,7 @@ data class Track(
                 durationSeconds = item.durationSeconds,
                 thumbnailUrl = com.koi.backend.innertube.InnerTubeClient.getHighResThumbnailUrl(item.thumbnailUrl) ?: item.thumbnailUrl,
                 isLiked = isLiked,
+                isDownloaded = isDownloaded,
                 lyrics = syncedLyrics.map { it.text },
                 syncedLyrics = syncedLyrics
             )

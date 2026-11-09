@@ -8,6 +8,9 @@ import com.google.gson.Gson
 import com.koi.backend.innertube.PlaybackStream
 import com.koi.backend.innertube.SongItem
 import com.koi.backend.lyrics.Lyrics
+import com.koi.ui.model.Playlist
+import com.koi.ui.model.Track
+import java.io.File
 import java.util.UUID
 
 data class LocalPlaylistInfo(
@@ -16,7 +19,8 @@ data class LocalPlaylistInfo(
     val trackCount: Int,
     val coverUrl: String? = null,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val description: String? = null
 )
 
 data class SearchHistoryRecord(
@@ -41,6 +45,8 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
             CREATE TABLE IF NOT EXISTS local_playlists (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
+                description TEXT,
+                cover_url TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
@@ -119,6 +125,32 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
 
         db.execSQL(
             """
+            CREATE TABLE IF NOT EXISTS downloaded_playlists (
+                playlist_id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                description TEXT,
+                creator TEXT,
+                thumbnail_url TEXT,
+                downloaded_at INTEGER NOT NULL,
+                track_count INTEGER NOT NULL
+            );
+            """.trimIndent()
+        )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS downloaded_playlist_tracks (
+                playlist_id TEXT NOT NULL,
+                video_id TEXT NOT NULL,
+                position INTEGER NOT NULL,
+                song_json TEXT NOT NULL,
+                PRIMARY KEY (playlist_id, video_id)
+            );
+            """.trimIndent()
+        )
+
+        db.execSQL(
+            """
             CREATE TABLE IF NOT EXISTS track_audio_settings (
                 video_id TEXT PRIMARY KEY,
                 settings_json TEXT NOT NULL,
@@ -163,6 +195,12 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
             db.execSQL("ALTER TABLE stream_url_cache ADD COLUMN client_name TEXT;")
         } catch (_: Exception) {}
         try {
+            db.execSQL("ALTER TABLE local_playlists ADD COLUMN description TEXT;")
+        } catch (_: Exception) {}
+        try {
+            db.execSQL("ALTER TABLE local_playlists ADD COLUMN cover_url TEXT;")
+        } catch (_: Exception) {}
+        try {
             db.execSQL(
                 """
                 CREATE TABLE IF NOT EXISTS search_history (
@@ -175,22 +213,131 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
                 """.trimIndent()
             )
         } catch (_: Exception) {}
+        try {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS downloaded_playlists (
+                    playlist_id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    creator TEXT,
+                    thumbnail_url TEXT,
+                    downloaded_at INTEGER NOT NULL,
+                    track_count INTEGER NOT NULL
+                );
+                """.trimIndent()
+            )
+        } catch (_: Exception) {}
+        try {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS downloaded_playlist_tracks (
+                    playlist_id TEXT NOT NULL,
+                    video_id TEXT NOT NULL,
+                    position INTEGER NOT NULL,
+                    song_json TEXT NOT NULL,
+                    PRIMARY KEY (playlist_id, video_id)
+                );
+                """.trimIndent()
+            )
+        } catch (_: Exception) {}
     }
 
     // --- PLAYLIST MANAGEMENT (matching Ryotunes local_playlists) ---
 
-    fun createPlaylist(title: String): String {
+    fun createPlaylist(title: String, description: String? = null, coverUrl: String? = null): String {
         val id = UUID.randomUUID().toString()
         val now = System.currentTimeMillis() / 1000
         val db = writableDatabase
         val cv = ContentValues().apply {
             put("id", id)
             put("title", title)
+            if (description != null) put("description", description)
+            if (coverUrl != null) put("cover_url", coverUrl)
             put("created_at", now)
             put("updated_at", now)
         }
         db.insertWithOnConflict("local_playlists", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
         return id
+    }
+
+    fun updatePlaylist(playlistId: String, newTitle: String, newDescription: String? = null, newCoverUrl: String? = null) {
+        val db = writableDatabase
+        val cv = ContentValues().apply {
+            put("title", newTitle)
+            if (newDescription != null) put("description", newDescription)
+            if (newCoverUrl != null) put("cover_url", newCoverUrl)
+            put("updated_at", System.currentTimeMillis() / 1000)
+        }
+        db.update("local_playlists", cv, "id = ?", arrayOf(playlistId))
+
+        // Also update downloaded_playlists if this playlist is downloaded
+        val plCv = ContentValues().apply {
+            put("title", newTitle)
+            if (newDescription != null) put("description", newDescription)
+            if (newCoverUrl != null) put("thumbnail_url", newCoverUrl)
+        }
+        db.update("downloaded_playlists", plCv, "playlist_id = ?", arrayOf(playlistId))
+    }
+
+    fun renamePlaylist(playlistId: String, newTitle: String) {
+        updatePlaylist(playlistId, newTitle)
+    }
+
+    fun updatePlaylistCover(playlistId: String, coverUri: String) {
+        val db = writableDatabase
+        val cv = ContentValues().apply {
+            put("cover_url", coverUri)
+            put("updated_at", System.currentTimeMillis() / 1000)
+        }
+        db.update("local_playlists", cv, "id = ?", arrayOf(playlistId))
+        val plCv = ContentValues().apply {
+            put("thumbnail_url", coverUri)
+        }
+        db.update("downloaded_playlists", plCv, "playlist_id = ?", arrayOf(playlistId))
+    }
+
+    fun getPlaylistInfo(playlistId: String): LocalPlaylistInfo? {
+        val db = readableDatabase
+        val cursor = db.rawQuery(
+            """
+            SELECT p.id, p.title, p.created_at, p.updated_at, COUNT(t.video_id) AS track_count, p.description, p.cover_url
+            FROM local_playlists p
+            LEFT JOIN local_playlist_tracks t ON p.id = t.playlist_id
+            WHERE p.id = ?
+            GROUP BY p.id
+            """.trimIndent(),
+            arrayOf(playlistId)
+        )
+        var info: LocalPlaylistInfo? = null
+        if (cursor.moveToFirst()) {
+            val id = cursor.getString(0)
+            val title = cursor.getString(1)
+            val createdAt = cursor.getLong(2)
+            val updatedAt = cursor.getLong(3)
+            val trackCount = cursor.getInt(4)
+            val description = if (cursor.isNull(5)) null else cursor.getString(5)
+            val customCover = if (cursor.isNull(6)) null else cursor.getString(6)
+
+            var coverUrl = customCover
+            if (coverUrl.isNullOrEmpty()) {
+                val coverCursor = db.rawQuery(
+                    "SELECT song_json FROM local_playlist_tracks WHERE playlist_id = ? ORDER BY position ASC LIMIT 1",
+                    arrayOf(id)
+                )
+                if (coverCursor.moveToFirst()) {
+                    val json = coverCursor.getString(0)
+                    try {
+                        val s = gson.fromJson(json, SongItem::class.java)
+                        coverUrl = s.thumbnailUrl
+                    } catch (_: Exception) {}
+                }
+                coverCursor.close()
+            }
+            info = LocalPlaylistInfo(id, title, trackCount, coverUrl, createdAt, updatedAt, description)
+        }
+        cursor.close()
+        return info
     }
 
     fun deletePlaylist(playlistId: String) {
@@ -230,6 +377,46 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
             "playlist_id = ? AND video_id = ?",
             arrayOf(playlistId, videoId)
         )
+        val updateCv = ContentValues().apply {
+            put("updated_at", System.currentTimeMillis() / 1000)
+        }
+        db.update("local_playlists", updateCv, "id = ?", arrayOf(playlistId))
+    }
+
+    fun removeTracksFromPlaylist(playlistId: String, videoIds: Collection<String>) {
+        if (videoIds.isEmpty()) return
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            for (videoId in videoIds) {
+                db.delete(
+                    "local_playlist_tracks",
+                    "playlist_id = ? AND video_id = ?",
+                    arrayOf(playlistId, videoId)
+                )
+            }
+            val updateCv = ContentValues().apply {
+                put("updated_at", System.currentTimeMillis() / 1000)
+            }
+            db.update("local_playlists", updateCv, "id = ?", arrayOf(playlistId))
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun removeLikedSongs(videoIds: Collection<String>) {
+        if (videoIds.isEmpty()) return
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            for (videoId in videoIds) {
+                db.delete("liked_songs", "video_id = ?", arrayOf(videoId))
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
     }
 
     fun getPlaylistTracks(playlistId: String): List<SongItem> {
@@ -257,7 +444,7 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
         val list = mutableListOf<LocalPlaylistInfo>()
         val cursor = db.rawQuery(
             """
-            SELECT p.id, p.title, p.created_at, p.updated_at, COUNT(t.video_id) AS track_count
+            SELECT p.id, p.title, p.created_at, p.updated_at, COUNT(t.video_id) AS track_count, p.description, p.cover_url
             FROM local_playlists p
             LEFT JOIN local_playlist_tracks t ON p.id = t.playlist_id
             GROUP BY p.id
@@ -271,21 +458,25 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
             val createdAt = cursor.getLong(2)
             val updatedAt = cursor.getLong(3)
             val trackCount = cursor.getInt(4)
+            val description = if (cursor.isNull(5)) null else cursor.getString(5)
+            val customCover = if (cursor.isNull(6)) null else cursor.getString(6)
 
-            // Get cover of first track
-            var coverUrl: String? = null
-            val coverCursor = db.rawQuery(
-                "SELECT song_json FROM local_playlist_tracks WHERE playlist_id = ? ORDER BY position ASC LIMIT 1",
-                arrayOf(id)
-            )
-            if (coverCursor.moveToFirst()) {
-                val json = coverCursor.getString(0)
-                try {
-                    val s = gson.fromJson(json, SongItem::class.java)
-                    coverUrl = s.thumbnailUrl
-                } catch (e: Exception) { }
+            // Get cover of first track if customCover is null
+            var coverUrl: String? = customCover
+            if (coverUrl.isNullOrEmpty()) {
+                val coverCursor = db.rawQuery(
+                    "SELECT song_json FROM local_playlist_tracks WHERE playlist_id = ? ORDER BY position ASC LIMIT 1",
+                    arrayOf(id)
+                )
+                if (coverCursor.moveToFirst()) {
+                    val json = coverCursor.getString(0)
+                    try {
+                        val s = gson.fromJson(json, SongItem::class.java)
+                        coverUrl = s.thumbnailUrl
+                    } catch (e: Exception) { }
+                }
+                coverCursor.close()
             }
-            coverCursor.close()
 
             list.add(
                 LocalPlaylistInfo(
@@ -294,7 +485,8 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
                     trackCount = trackCount,
                     coverUrl = coverUrl,
                     createdAt = createdAt,
-                    updatedAt = updatedAt
+                    updatedAt = updatedAt,
+                    description = description
                 )
             )
         }
@@ -536,8 +728,14 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
     fun isDownloaded(videoId: String): Boolean {
         val db = readableDatabase
         db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_songs (video_id TEXT PRIMARY KEY, title TEXT, artist TEXT, file_path TEXT, downloaded_at INTEGER, song_json TEXT);")
-        val cursor = db.rawQuery("SELECT 1 FROM downloaded_songs WHERE video_id = ?", arrayOf(videoId))
-        val exists = cursor.count > 0
+        val cursor = db.rawQuery("SELECT file_path FROM downloaded_songs WHERE video_id = ?", arrayOf(videoId))
+        var exists = false
+        if (cursor.moveToFirst()) {
+            val path = cursor.getString(0)
+            if (path != null && File(path).exists() && File(path).length() > 0) {
+                exists = true
+            }
+        }
         cursor.close()
         return exists
     }
@@ -548,7 +746,10 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
         val cursor = db.rawQuery("SELECT file_path FROM downloaded_songs WHERE video_id = ?", arrayOf(videoId))
         var path: String? = null
         if (cursor.moveToFirst()) {
-            path = cursor.getString(0)
+            val p = cursor.getString(0)
+            if (p != null && File(p).exists() && File(p).length() > 0) {
+                path = p
+            }
         }
         cursor.close()
         return path
@@ -578,16 +779,222 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
         val db = readableDatabase
         db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_songs (video_id TEXT PRIMARY KEY, title TEXT, artist TEXT, file_path TEXT, downloaded_at INTEGER, song_json TEXT);")
         val list = mutableListOf<SongItem>()
-        val cursor = db.rawQuery("SELECT song_json FROM downloaded_songs ORDER BY downloaded_at DESC", null)
+        val cursor = db.rawQuery("SELECT song_json, file_path FROM downloaded_songs ORDER BY downloaded_at DESC", null)
+        while (cursor.moveToNext()) {
+            val json = cursor.getString(0)
+            val path = cursor.getString(1)
+            if (path != null && File(path).exists() && File(path).length() > 0) {
+                try {
+                    val song = gson.fromJson(json, SongItem::class.java)
+                    if (song != null) list.add(song)
+                } catch (e: Exception) { }
+            }
+        }
+        cursor.close()
+        return list
+    }
+
+    // --- DOWNLOADED PLAYLISTS MANAGEMENT ---
+
+    fun saveDownloadedPlaylist(playlist: Playlist, songs: List<SongItem>) {
+        val db = writableDatabase
+        db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_playlists (playlist_id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT, creator TEXT, thumbnail_url TEXT, downloaded_at INTEGER NOT NULL, track_count INTEGER NOT NULL);")
+        db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_playlist_tracks (playlist_id TEXT NOT NULL, video_id TEXT NOT NULL, position INTEGER NOT NULL, song_json TEXT NOT NULL, PRIMARY KEY (playlist_id, video_id));")
+        val now = System.currentTimeMillis() / 1000
+        val cv = ContentValues().apply {
+            put("playlist_id", playlist.id)
+            put("title", playlist.title)
+            put("description", playlist.description)
+            put("creator", playlist.creator)
+            put("thumbnail_url", playlist.thumbnailUrl)
+            put("downloaded_at", now)
+            put("track_count", songs.size)
+        }
+        db.insertWithOnConflict("downloaded_playlists", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+
+        db.delete("downloaded_playlist_tracks", "playlist_id = ?", arrayOf(playlist.id))
+        songs.forEachIndexed { index, song ->
+            val trackCv = ContentValues().apply {
+                put("playlist_id", playlist.id)
+                put("video_id", song.videoId)
+                put("position", index)
+                put("song_json", gson.toJson(song))
+            }
+            db.insertWithOnConflict("downloaded_playlist_tracks", null, trackCv, SQLiteDatabase.CONFLICT_REPLACE)
+        }
+    }
+
+    fun isPlaylistDownloaded(playlistId: String): Boolean {
+        val db = readableDatabase
+        db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_playlists (playlist_id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT, creator TEXT, thumbnail_url TEXT, downloaded_at INTEGER NOT NULL, track_count INTEGER NOT NULL);")
+        val cursor = db.rawQuery("SELECT 1 FROM downloaded_playlists WHERE playlist_id = ?", arrayOf(playlistId))
+        val inTable = cursor.count > 0
+        cursor.close()
+        if (!inTable) return false
+        val tracks = getDownloadedPlaylistTracks(playlistId)
+        if (tracks.isEmpty()) return false
+        return tracks.all { isDownloaded(it.videoId) }
+    }
+
+    fun getDownloadedPlaylists(): List<Playlist> {
+        val db = readableDatabase
+        db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_playlists (playlist_id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT, creator TEXT, thumbnail_url TEXT, downloaded_at INTEGER NOT NULL, track_count INTEGER NOT NULL);")
+        val list = mutableListOf<Playlist>()
+        val cursor = db.rawQuery(
+            "SELECT playlist_id, title, description, creator, thumbnail_url, track_count FROM downloaded_playlists ORDER BY downloaded_at DESC",
+            null
+        )
+        while (cursor.moveToNext()) {
+            val id = cursor.getString(0)
+            val title = cursor.getString(1)
+            val description = cursor.getString(2) ?: ""
+            val creator = cursor.getString(3) ?: "Koi"
+            val thumbnailUrl = cursor.getString(4)
+            val trackCount = cursor.getInt(5)
+
+            val songs = getDownloadedPlaylistTracks(id)
+            val tracks = songs.map { song ->
+                Track.fromSongItem(song, isLiked = isLiked(song.videoId), isDownloaded = true)
+            }
+
+            list.add(
+                Playlist(
+                    id = id,
+                    title = title,
+                    description = description,
+                    creator = creator,
+                    thumbnailUrl = thumbnailUrl,
+                    trackCount = if (trackCount > 0) trackCount else tracks.size,
+                    tracks = tracks
+                )
+            )
+        }
+        cursor.close()
+        return list
+    }
+
+    fun getDownloadedPlaylistTracks(playlistId: String): List<SongItem> {
+        val db = readableDatabase
+        db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_playlist_tracks (playlist_id TEXT NOT NULL, video_id TEXT NOT NULL, position INTEGER NOT NULL, song_json TEXT NOT NULL, PRIMARY KEY (playlist_id, video_id));")
+        val list = mutableListOf<SongItem>()
+        val cursor = db.rawQuery(
+            "SELECT song_json FROM downloaded_playlist_tracks WHERE playlist_id = ? ORDER BY position ASC",
+            arrayOf(playlistId)
+        )
         while (cursor.moveToNext()) {
             val json = cursor.getString(0)
             try {
                 val song = gson.fromJson(json, SongItem::class.java)
                 if (song != null) list.add(song)
-            } catch (e: Exception) { }
+            } catch (_: Exception) {}
         }
         cursor.close()
         return list
+    }
+
+    fun removeDownloadedPlaylist(playlistId: String, deleteAudioFiles: Boolean = true, context: Context? = null) {
+        val db = writableDatabase
+        if (deleteAudioFiles && context != null) {
+            val tracks = getDownloadedPlaylistTracks(playlistId)
+            tracks.forEach { track ->
+                val checkCursor = db.rawQuery(
+                    "SELECT COUNT(*) FROM downloaded_playlist_tracks WHERE video_id = ? AND playlist_id != ?",
+                    arrayOf(track.videoId, playlistId)
+                )
+                val count = if (checkCursor.moveToFirst()) checkCursor.getInt(0) else 0
+                checkCursor.close()
+                if (count == 0) {
+                    val path = getDownloadedFilePath(track.videoId)
+                    removeDownload(track.videoId)
+                    try {
+                        if (path != null) File(path).delete()
+                        File(context.filesDir, "downloads/${track.videoId}.m4a").delete()
+                        File(context.filesDir, "downloads/${track.videoId}.mp3").delete()
+                        File(context.filesDir, "downloads/temp/${track.videoId}.raw").delete()
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+        db.delete("downloaded_playlists", "playlist_id = ?", arrayOf(playlistId))
+        db.delete("downloaded_playlist_tracks", "playlist_id = ?", arrayOf(playlistId))
+    }
+
+    fun getAllDownloadedVideoIds(): Set<String> {
+        val db = readableDatabase
+        db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_songs (video_id TEXT PRIMARY KEY, title TEXT, artist TEXT, file_path TEXT, downloaded_at INTEGER, song_json TEXT);")
+        val set = mutableSetOf<String>()
+        val cursor = db.rawQuery("SELECT video_id, file_path FROM downloaded_songs", null)
+        while (cursor.moveToNext()) {
+            val id = cursor.getString(0)
+            val path = cursor.getString(1)
+            if (path != null && File(path).exists() && File(path).length() > 0) {
+                set.add(id)
+            }
+        }
+        cursor.close()
+        return set
+    }
+
+    fun getAllDownloadedPlaylistIds(): Set<String> {
+        val db = readableDatabase
+        db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_playlists (playlist_id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT, creator TEXT, thumbnail_url TEXT, downloaded_at INTEGER NOT NULL, track_count INTEGER NOT NULL);")
+        val set = mutableSetOf<String>()
+        val cursor = db.rawQuery("SELECT playlist_id FROM downloaded_playlists", null)
+        val allIds = mutableListOf<String>()
+        while (cursor.moveToNext()) {
+            allIds.add(cursor.getString(0))
+        }
+        cursor.close()
+        for (id in allIds) {
+            if (isPlaylistDownloaded(id)) {
+                set.add(id)
+            }
+        }
+        return set
+    }
+
+    fun getDownloadedSongsCount(): Int {
+        val db = readableDatabase
+        db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_songs (video_id TEXT PRIMARY KEY, title TEXT, artist TEXT, file_path TEXT, downloaded_at INTEGER, song_json TEXT);")
+        val cursor = db.rawQuery("SELECT COUNT(*) FROM downloaded_songs", null)
+        var count = 0
+        if (cursor.moveToFirst()) count = cursor.getInt(0)
+        cursor.close()
+        return count
+    }
+
+    fun getDownloadedPlaylistsCount(): Int {
+        val db = readableDatabase
+        db.execSQL("CREATE TABLE IF NOT EXISTS downloaded_playlists (playlist_id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT, creator TEXT, thumbnail_url TEXT, downloaded_at INTEGER NOT NULL, track_count INTEGER NOT NULL);")
+        val cursor = db.rawQuery("SELECT COUNT(*) FROM downloaded_playlists", null)
+        var count = 0
+        if (cursor.moveToFirst()) count = cursor.getInt(0)
+        cursor.close()
+        return count
+    }
+
+    fun getTotalDownloadedSizeBytes(context: Context): Long {
+        val downloadsDir = File(context.filesDir, "downloads")
+        if (!downloadsDir.exists()) return 0L
+        var totalBytes = 0L
+        try {
+            downloadsDir.walkTopDown().forEach { file ->
+                if (file.isFile) totalBytes += file.length()
+            }
+        } catch (_: Exception) {}
+        return totalBytes
+    }
+
+    fun clearAllDownloads(context: Context) {
+        val db = writableDatabase
+        db.delete("downloaded_songs", null, null)
+        db.delete("downloaded_playlists", null, null)
+        db.delete("downloaded_playlist_tracks", null, null)
+        try {
+            val downloadsDir = File(context.filesDir, "downloads")
+            downloadsDir.deleteRecursively()
+            downloadsDir.mkdirs()
+        } catch (_: Exception) {}
     }
 
     // --- PER-TRACK AUDIO SETTINGS ---
