@@ -104,7 +104,8 @@ data class PlaybackUiState(
     val preferredDownloadFormat: AudioFormat = AudioFormat.M4A,
     val preferredDownloadQuality: AudioQuality = AudioQuality.HIGH,
     val username: String = UserProfileManager.DEFAULT_USERNAME,
-    val showInitialUsernameDialog: Boolean = false
+    val showInitialUsernameDialog: Boolean = false,
+    val isUpdateDialogDismissed: Boolean = false
 )
 
 class PlaybackViewModel : ViewModel() {
@@ -335,6 +336,9 @@ class PlaybackViewModel : ViewModel() {
         refreshDownloads()
         loadHomeData()
         refreshUsageMetrics()
+
+        // Background update check on app launch
+        checkForUpdate()
     }
 
     fun loadHomeData() {
@@ -751,14 +755,23 @@ class PlaybackViewModel : ViewModel() {
 
     fun removeTrackFromPlaylist(playlistId: String, track: Track) {
         viewModelScope.launch(Dispatchers.IO) {
-            database.removeTrackFromPlaylist(playlistId, track.id)
+            val isLiked = playlistId == "liked_songs" || _uiState.value.selectedPlaylist?.isLikedSongs == true
+            if (isLiked) {
+                database.removeLikedSongs(setOf(track.id))
+            } else {
+                database.removeTrackFromPlaylist(playlistId, track.id)
+            }
             withContext(Dispatchers.Main) {
                 Toast.makeText(app, "Removed from playlist", Toast.LENGTH_SHORT).show()
             }
             refreshLibrary()
             val currentSelected = _uiState.value.selectedPlaylist
             if (currentSelected?.id == playlistId) {
-                val updatedTracks = database.getPlaylistTracks(playlistId).map { it.toTrack(database.isLiked(it.videoId)) }
+                val updatedTracks = if (isLiked) {
+                    database.getLikedSongs().map { it.toTrack(isLiked = true) }
+                } else {
+                    database.getPlaylistTracks(playlistId).map { it.toTrack(database.isLiked(it.videoId)) }
+                }
                 _uiState.update {
                     it.copy(
                         selectedPlaylist = it.selectedPlaylist?.copy(
@@ -1636,8 +1649,15 @@ class PlaybackViewModel : ViewModel() {
 
     val updateState: StateFlow<UpdateUiState> = app.updateManager.state
 
-    fun checkForUpdate() {
+    fun checkForUpdate(isManual: Boolean = false) {
+        if (isManual) {
+            _uiState.update { it.copy(isUpdateDialogDismissed = false) }
+        }
         app.updateManager.checkForUpdate()
+    }
+
+    fun dismissUpdateDialog() {
+        _uiState.update { it.copy(isUpdateDialogDismissed = true) }
     }
 
     fun downloadUpdate(release: GitHubRelease, apkAsset: GitHubAsset, context: Context) {

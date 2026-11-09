@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -73,9 +74,10 @@ fun PlaylistDetailScreen(
             .fillMaxSize()
             .background(RogObsidian)
     ) {
+        val navBarPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = if (isManageMode) 220.dp else 140.dp)
+            contentPadding = PaddingValues(bottom = (if (isManageMode) 230.dp else 145.dp) + navBarPadding)
         ) {
             // Minimal Hero Header
             item {
@@ -516,13 +518,18 @@ fun PlaylistDetailScreen(
             }
         }
 
-        // Floating Bottom Removal Bar in Manage Mode
-        if (isManageMode) {
+        // Floating Bottom Removal Bar in Manage Mode (Properly elevated above NowPlayingMiniBar and KoiBottomNavBar)
+        AnimatedVisibility(
+            visible = isManageMode,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
             Surface(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(bottom = 75.dp)
+                    .navigationBarsPadding()
+                    .padding(bottom = 148.dp)
                     .padding(horizontal = 16.dp),
                 shape = RoundedCornerShape(20.dp),
                 color = RogSurfaceDark,
@@ -536,20 +543,37 @@ fun PlaylistDetailScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            text = "${selectedTrackIds.size} selected",
-                            fontSize = 14.sp,
-                            fontFamily = CircularFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            color = RogTextPrimary
-                        )
-                        Text(
-                            text = if (selectedTrackIds.isEmpty()) "Tap songs to select" else "Ready to remove",
-                            fontSize = 11.5.sp,
-                            fontFamily = CircularFontFamily,
-                            color = RogTextSecondary
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = {
+                                isManageMode = false
+                                selectedTrackIds.clear()
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_close),
+                                contentDescription = "Cancel manage mode",
+                                tint = RogTextSecondary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Column {
+                            Text(
+                                text = "${selectedTrackIds.size} selected",
+                                fontSize = 14.sp,
+                                fontFamily = CircularFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = RogTextPrimary
+                            )
+                            Text(
+                                text = if (selectedTrackIds.isEmpty()) "Tap songs to select" else "Ready to remove",
+                                fontSize = 11.5.sp,
+                                fontFamily = CircularFontFamily,
+                                color = RogTextSecondary
+                            )
+                        }
                     }
 
                     Button(

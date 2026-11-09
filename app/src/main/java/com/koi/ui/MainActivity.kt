@@ -37,6 +37,7 @@ import androidx.compose.material.icons.Icons
 import com.koi.backend.player.BatteryOptimizationHelper
 import com.koi.backend.audio.AudioProfile
 import com.koi.backend.audio.SpatialMode
+import com.koi.backend.update.UpdateUiState
 import com.koi.ui.components.AddSongsToPlaylistSheet
 import com.koi.ui.components.DownloadQualitySheet
 import com.koi.ui.components.EditPlaylistDialog
@@ -47,6 +48,7 @@ import com.koi.ui.components.InitialUsernameDialog
 import com.koi.ui.components.NowPlayingFullScreenSheet
 import com.koi.ui.components.NowPlayingMiniBar
 import com.koi.ui.components.SleepTimerSheet
+import com.koi.ui.components.UpdateAvailableDialog
 import com.koi.ui.components.KoiBottomNavBar
 import com.koi.ui.model.NavigationTab
 import com.koi.ui.model.SearchHistoryType
@@ -170,7 +172,7 @@ fun KoiApp(
                     onResetProfile = { viewModel.resetProfile(it) },
                     onSetSleepTimer = { viewModel.setSleepTimer(it) },
                     onClearCacheClick = { viewModel.clearCache() },
-                    onCheckForUpdate = { viewModel.checkForUpdate() },
+                    onCheckForUpdate = { viewModel.checkForUpdate(isManual = true) },
                     onDownloadUpdate = { release, asset ->
                         viewModel.downloadUpdate(release, asset, currentContext)
                     },
@@ -665,6 +667,57 @@ fun KoiApp(
                                 }
                             }
 
+                            val currentPl = uiState.selectedPlaylist
+                            if (currentPl != null && currentPl.tracks.any { it.id == trackToAdd.id }) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 6.dp),
+                                    color = SpotifyDivider
+                                )
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            viewModel.closeAddToPlaylistDialog()
+                                            viewModel.removeTrackFromPlaylist(currentPl.id, trackToAdd)
+                                        }
+                                        .padding(vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color(0xFFE53935).copy(alpha = 0.15f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_trash),
+                                            contentDescription = "Remove from playlist",
+                                            tint = Color(0xFFE53935),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = "Remove from this playlist",
+                                            fontSize = 15.sp,
+                                            fontFamily = CircularFontFamily,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFE53935)
+                                        )
+                                        Text(
+                                            text = "Remove from \"${currentPl.title}\"",
+                                            fontSize = 12.sp,
+                                            fontFamily = CircularFontFamily,
+                                            color = SpotifyTextSecondary
+                                        )
+                                    }
+                                }
+                            }
+
                             HorizontalDivider(
                                 modifier = Modifier.padding(vertical = 6.dp),
                                 color = SpotifyDivider
@@ -837,6 +890,30 @@ fun KoiApp(
                 },
                 onDismiss = {
                     viewModel.skipInitialUsername()
+                }
+            )
+        }
+
+        // App Update Available Dialog: Shown if and only if an update is available (or in progress)
+        // and the user has not dismissed it via the "Later" button.
+        val isUpdateActive = updateState is UpdateUiState.UpdateAvailable ||
+                updateState is UpdateUiState.Downloading ||
+                updateState is UpdateUiState.ReadyToInstall
+
+        if (isUpdateActive && !uiState.isUpdateDialogDismissed && !uiState.showInitialUsernameDialog) {
+            UpdateAvailableDialog(
+                updateState = updateState,
+                onUpdate = { release, asset ->
+                    viewModel.downloadUpdate(release, asset, context)
+                },
+                onCancelDownload = {
+                    viewModel.cancelUpdateDownload()
+                },
+                onInstallUpdate = { apkFile ->
+                    viewModel.installUpdate(context, apkFile)
+                },
+                onLater = {
+                    viewModel.dismissUpdateDialog()
                 }
             )
         }
