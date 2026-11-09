@@ -56,6 +56,7 @@ data class PlaybackUiState(
     val libraryPlaylists: List<Playlist> = emptyList(),
     val searchQuery: String = "",
     val searchResults: List<Track> = emptyList(),
+    val searchHistory: List<SearchHistoryEntry> = emptyList(),
     val isSearching: Boolean = false,
     val showCreatePlaylistDialog: Boolean = false,
     val trackForPlaylistMenu: Track? = null,
@@ -68,7 +69,11 @@ data class PlaybackUiState(
     val showSleepTimerDialog: Boolean = false,
     val showEqualizerSheet: Boolean = false,
     val selectedEqPreset: String = "Flat",
-    val showSettingsScreen: Boolean = false
+    val showSettingsScreen: Boolean = false,
+    val showAddSongsSheet: Boolean = false,
+    val playlistSearchQuery: String = "",
+    val playlistSearchResults: List<Track> = emptyList(),
+    val isSearchingForPlaylist: Boolean = false
 )
 
 class PlaybackViewModel : ViewModel() {
@@ -185,11 +190,13 @@ class PlaybackViewModel : ViewModel() {
 
     private var sleepTimerJob: Job? = null
     private var searchJob: Job? = null
+    private var playlistSearchJob: Job? = null
 
     init {
         database.clearCustomPresets()
         playerEngine.applyDspConfig(_dspConfig.value)
         prefs.edit().putString("last_dsp_config", _dspConfig.value.toJson()).apply()
+        loadSearchHistory()
 
         // Collect PlayerEngine states
         viewModelScope.launch {
@@ -467,8 +474,20 @@ class PlaybackViewModel : ViewModel() {
     fun toggleLike(targetTrack: Track? = null) {
         val track = targetTrack ?: _uiState.value.currentTrack
         val isNowLiked = database.toggleLike(track.toSongItem())
-        if (targetTrack == null || targetTrack.id == _uiState.value.currentTrack.id) {
-            _uiState.update { it.copy(currentTrack = it.currentTrack.copy(isLiked = isNowLiked)) }
+        _uiState.update { state ->
+            val updatedCurrent = if (targetTrack == null || targetTrack.id == state.currentTrack.id) {
+                state.currentTrack.copy(isLiked = isNowLiked)
+            } else {
+                state.currentTrack
+            }
+            val updatedHistory = state.searchHistory.map { entry ->
+                if (entry.track != null && entry.track.id == track.id) {
+                    entry.copy(track = entry.track.copy(isLiked = isNowLiked))
+                } else {
+                    entry
+                }
+            }
+            state.copy(currentTrack = updatedCurrent, searchHistory = updatedHistory)
         }
         refreshLibrary()
     }
@@ -481,7 +500,7 @@ class PlaybackViewModel : ViewModel() {
         playerEngine.toggleRepeat()
     }
 
-    // --- SEARCH ---
+    // --- SEARCH & SEARCH HISTORY ---
 
     fun onSearchQueryChanged(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
@@ -498,6 +517,65 @@ class PlaybackViewModel : ViewModel() {
             val songs = innerTube.searchSongs(query)
             val tracks = songs.map { it.toTrack(database.isLiked(it.videoId)) }
             _uiState.update { it.copy(searchResults = tracks, isSearching = false) }
+        }
+    }
+
+    fun loadSearchHistory() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val records = database.getSearchHistory()
+            val entries = records.mapNotNull { record ->
+                when (record.type) {
+                    "TRACK" -> {
+                        val songItem = record.songItem ?: return@mapNotNull null
+                        SearchHistoryEntry(
+                            id = record.id,
+                            type = SearchHistoryType.TRACK,
+                            track = songItem.toTrack(database.isLiked(songItem.videoId)),
+                            timestamp = record.timestamp
+                        )
+                    }
+                    "QUERY" -> {
+                        val q = record.queryText ?: return@mapNotNull null
+                        SearchHistoryEntry(
+                            id = record.id,
+                            type = SearchHistoryType.QUERY,
+                            query = q,
+                            timestamp = record.timestamp
+                        )
+                    }
+                    else -> null
+                }
+            }
+            _uiState.update { it.copy(searchHistory = entries) }
+        }
+    }
+
+    fun addTrackToSearchHistory(track: Track) {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.saveSearchHistoryTrack(track.toSongItem())
+            loadSearchHistory()
+        }
+    }
+
+    fun addQueryToSearchHistory(query: String) {
+        if (query.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            database.saveSearchHistoryQuery(query)
+            loadSearchHistory()
+        }
+    }
+
+    fun removeSearchHistoryItem(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.removeSearchHistoryItem(id)
+            loadSearchHistory()
+        }
+    }
+
+    fun clearSearchHistory() {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.clearSearchHistory()
+            _uiState.update { it.copy(searchHistory = emptyList()) }
         }
     }
 
@@ -552,6 +630,15 @@ class PlaybackViewModel : ViewModel() {
         }
     }
 
+    fun createPlaylistAndAddTrack(title: String, track: Track) {
+        val trimmed = title.trim()
+        if (trimmed.isBlank()) return
+        val playlistId = database.createPlaylist(trimmed)
+        database.addTrackToPlaylist(playlistId, track.toSongItem())
+        closeAddToPlaylistDialog()
+        refreshLibrary()
+    }
+
     fun removeTrackFromPlaylist(playlistId: String, track: Track) {
         database.removeTrackFromPlaylist(playlistId, track.id)
         refreshLibrary()
@@ -582,6 +669,8 @@ class PlaybackViewModel : ViewModel() {
         _uiState.update { it.copy(selectedTab = tab, selectedPlaylist = null, showSettingsScreen = false) }
         if (tab == NavigationTab.PROFILE) {
             refreshUsageMetrics()
+        } else if (tab == NavigationTab.SEARCH) {
+            loadSearchHistory()
         }
     }
 
@@ -673,7 +762,49 @@ class PlaybackViewModel : ViewModel() {
         }
     }
 
+    fun openAddSongsSheet() {
+        _uiState.update {
+            it.copy(
+                showAddSongsSheet = true,
+                playlistSearchQuery = "",
+                playlistSearchResults = emptyList(),
+                isSearchingForPlaylist = false
+            )
+        }
+    }
+
+    fun closeAddSongsSheet() {
+        playlistSearchJob?.cancel()
+        _uiState.update {
+            it.copy(
+                showAddSongsSheet = false,
+                playlistSearchQuery = "",
+                playlistSearchResults = emptyList(),
+                isSearchingForPlaylist = false
+            )
+        }
+    }
+
+    fun onPlaylistSearchQueryChanged(query: String) {
+        _uiState.update { it.copy(playlistSearchQuery = query) }
+        playlistSearchJob?.cancel()
+
+        if (query.trim().isEmpty()) {
+            _uiState.update { it.copy(playlistSearchResults = emptyList(), isSearchingForPlaylist = false) }
+            return
+        }
+
+        playlistSearchJob = viewModelScope.launch {
+            delay(350)
+            _uiState.update { it.copy(isSearchingForPlaylist = true) }
+            val songs = innerTube.searchSongs(query)
+            val tracks = songs.map { it.toTrack(database.isLiked(it.videoId)) }
+            _uiState.update { it.copy(playlistSearchResults = tracks, isSearchingForPlaylist = false) }
+        }
+    }
+
     fun closePlaylist() {
+        closeAddSongsSheet()
         _uiState.update { it.copy(selectedPlaylist = null) }
     }
 

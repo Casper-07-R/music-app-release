@@ -1,5 +1,6 @@
 package com.koi.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -17,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -189,37 +191,52 @@ fun HomeScreen(
 
         // --- 2. LIVE AUDIO DECK (HERO FEATURE CARD) ---
         item {
-            Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 20.dp, vertical = 6.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(28.dp))
+            ) {
+                // Background Image: The vibrant Koi pond with water ripples starting from bottom-left corner
+                Image(
+                    painter = painterResource(id = R.drawable.koi_notification_bg),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    alignment = Alignment.BottomStart,
+                    modifier = Modifier.matchParentSize()
+                )
+
+                // Aquatic Scrim Overlay for optimal contrast and deep water vibrance
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0x9905141C),
+                                    Color(0x4005141C),
+                                    Color(0xB005141C)
+                                )
+                            )
+                        )
+                )
+
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(28.dp))
-                        .background(RogSurfaceDark)
                         .padding(18.dp)
                 ) {
-                    // Top Row: Track Artwork, Meta & Fullscreen Tap
+                    // Top Row: Track Meta & Fullscreen Tap (No pond image in icon; controls float above background)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onOpenFullScreen() },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        AsyncImage(
-                            model = uiState.currentTrack.thumbnailUrl,
-                            contentDescription = uiState.currentTrack.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(60.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(RogSurfaceMedium)
-                        )
-
-                        Spacer(modifier = Modifier.width(14.dp))
-
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = uiState.currentTrack.title,
-                                fontSize = 15.5.sp,
+                                fontSize = 16.sp,
                                 fontFamily = CircularFontFamily,
                                 fontWeight = FontWeight.Bold,
                                 color = RogTextPrimary,
@@ -229,7 +246,7 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = uiState.currentTrack.artist,
-                                fontSize = 12.sp,
+                                fontSize = 12.5.sp,
                                 fontFamily = CircularFontFamily,
                                 fontWeight = FontWeight.Normal,
                                 color = RogTextSecondary,
@@ -255,12 +272,12 @@ fun HomeScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Middle: Inline 360° Spatial Audio Segmented Switcher
+                    // Middle: Inline 360° Spatial Audio Segmented Switcher (slightly opaque background)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
-                            .background(RogSurfaceMedium)
+                            .background(RogSurfaceMedium.copy(alpha = 0.52f))
                             .padding(3.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -276,7 +293,7 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .weight(1f)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSelected) RogSurfaceHighlight else Color.Transparent)
+                                    .background(if (isSelected) RogSurfaceHighlight.copy(alpha = 0.65f) else Color.Transparent)
                                     .clickable { onSelectSpatialMode(mode) }
                                     .padding(vertical = 7.dp),
                                 contentAlignment = Alignment.Center
@@ -302,7 +319,7 @@ fun HomeScreen(
                             .fillMaxWidth()
                             .height(3.dp)
                             .clip(RoundedCornerShape(1.5.dp))
-                            .background(RogSurfaceMedium)
+                            .background(RogSurfaceMedium.copy(alpha = 0.35f))
                     ) {
                         Box(
                             modifier = Modifier

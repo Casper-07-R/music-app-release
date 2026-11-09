@@ -7,6 +7,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -17,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -36,6 +39,7 @@ fun PlaylistDetailScreen(
     onPlayAllClick: () -> Unit,
     onLikeTrackClick: (Track) -> Unit,
     onMoreTrackClick: (Track) -> Unit,
+    onAddSongsClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -136,7 +140,10 @@ fun PlaylistDetailScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         IconButton(onClick = { /* Download */ }) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_download),
@@ -144,6 +151,33 @@ fun PlaylistDetailScreen(
                                 tint = RogTextSecondary,
                                 modifier = Modifier.size(22.dp)
                             )
+                        }
+
+                        // Add Songs Button
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(RogSurfaceHighlight)
+                                .clickable { onAddSongsClick() }
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_plus),
+                                    contentDescription = "Add songs",
+                                    tint = RogTextGold,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Add songs",
+                                    fontSize = 13.sp,
+                                    fontFamily = CircularFontFamily,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = RogTextPrimary
+                                )
+                            }
                         }
                     }
 
@@ -169,6 +203,77 @@ fun PlaylistDetailScreen(
             }
         }
 
+        // Empty Playlist State
+        if (playlist.tracks.isEmpty()) {
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 36.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(RogSurfaceHighlight),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_plus),
+                            contentDescription = null,
+                            tint = RogTextGold,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text(
+                        text = "This playlist is empty",
+                        fontSize = 17.sp,
+                        fontFamily = CircularFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        color = RogTextPrimary
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = "Find and add songs to start listening",
+                        fontSize = 13.sp,
+                        fontFamily = CircularFontFamily,
+                        color = RogTextSecondary,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    Button(
+                        onClick = onAddSongsClick,
+                        colors = ButtonDefaults.buttonColors(containerColor = RogGoldPrimary),
+                        shape = RoundedCornerShape(20.dp),
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_plus),
+                            contentDescription = null,
+                            tint = RogObsidian,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Add songs",
+                            fontFamily = CircularFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            color = RogObsidian,
+                            fontSize = 13.5.sp
+                        )
+                    }
+                }
+            }
+        }
+
         // Track List
         itemsIndexed(playlist.tracks) { index, track ->
             TrackListItem(
@@ -179,6 +284,39 @@ fun PlaylistDetailScreen(
                 onLikeClick = { onLikeTrackClick(track) },
                 onMoreClick = { onMoreTrackClick(track) }
             )
+        }
+
+        // Add more songs footer button when tracks exist
+        if (playlist.tracks.isNotEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(RogSurfaceDark)
+                        .clickable { onAddSongsClick() }
+                        .padding(vertical = 12.dp, horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_plus),
+                        contentDescription = null,
+                        tint = RogTextGold,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Add to this playlist",
+                        fontSize = 14.sp,
+                        fontFamily = CircularFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        color = RogTextPrimary
+                    )
+                }
+            }
         }
     }
 }

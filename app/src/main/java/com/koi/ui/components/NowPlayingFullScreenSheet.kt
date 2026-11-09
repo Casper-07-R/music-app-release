@@ -64,6 +64,7 @@ fun NowPlayingFullScreenSheet(
     onDownloadClick: () -> Unit = {},
     onEightDClick: () -> Unit = {},
     onEightDLongClick: () -> Unit = {},
+    onAddToPlaylistClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val durationSeconds = track.durationSeconds.toFloat().coerceAtLeast(1f)
@@ -202,16 +203,52 @@ fun NowPlayingFullScreenSheet(
                         overflow = TextOverflow.Ellipsis
                     )
 
-                    IconButton(
-                        onClick = { /* More actions */ },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_more),
-                            contentDescription = "More Options",
-                            tint = RogTextSecondary,
-                            modifier = Modifier.size(20.dp)
-                        )
+                    var showOptionsMenu by remember { mutableStateOf(false) }
+
+                    Box {
+                        IconButton(
+                            onClick = { showOptionsMenu = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_more),
+                                contentDescription = "More Options",
+                                tint = RogTextSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showOptionsMenu,
+                            onDismissRequest = { showOptionsMenu = false },
+                            modifier = Modifier
+                                .background(RogSurfaceDark)
+                                .border(1.dp, RogDivider, RoundedCornerShape(8.dp))
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = "Add to playlist",
+                                        fontFamily = CircularFontFamily,
+                                        fontWeight = FontWeight.Medium,
+                                        color = RogTextPrimary,
+                                        fontSize = 14.sp
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_plus),
+                                        contentDescription = null,
+                                        tint = RogGoldPrimary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showOptionsMenu = false
+                                    onAddToPlaylistClick()
+                                }
+                            )
+                        }
                     }
                 }
 

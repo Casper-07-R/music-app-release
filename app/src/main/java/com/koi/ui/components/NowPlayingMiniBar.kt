@@ -45,9 +45,32 @@ fun NowPlayingMiniBar(
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .clip(RoundedCornerShape(22.dp))
-            .background(RogSurfaceDark)
             .clickable { onBarClick() }
     ) {
+        // Pond Background Artwork
+        androidx.compose.foundation.Image(
+            painter = painterResource(id = R.drawable.koi_notification_bg),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            alignment = androidx.compose.ui.Alignment.BottomStart,
+            modifier = Modifier.matchParentSize()
+        )
+
+        // Aquatic Scrim for optimal contrast and deep water vibrance
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    androidx.compose.ui.graphics.Brush.horizontalGradient(
+                        colors = listOf(
+                            androidx.compose.ui.graphics.Color(0xBD05141C),
+                            androidx.compose.ui.graphics.Color(0x6005141C),
+                            androidx.compose.ui.graphics.Color(0xAA05141C)
+                        )
+                    )
+                )
+        )
+
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier

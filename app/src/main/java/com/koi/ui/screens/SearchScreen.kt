@@ -1,6 +1,8 @@
 package com.koi.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -10,6 +12,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -19,16 +23,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.koi.ui.R
 import com.koi.ui.components.GenreBrowseCard
+import com.koi.ui.components.SearchHistoryItemRow
 import com.koi.ui.components.TrackListItem
 import com.koi.ui.model.GenreCategory
+import com.koi.ui.model.SearchHistoryEntry
 import com.koi.ui.model.Track
 import com.koi.ui.theme.*
 
@@ -37,15 +45,22 @@ fun SearchScreen(
     categories: List<GenreCategory>,
     searchQuery: String,
     searchResults: List<Track>,
+    searchHistory: List<SearchHistoryEntry> = emptyList(),
     isSearching: Boolean,
     currentTrackId: String,
     onQueryChanged: (String) -> Unit,
+    onSearchSubmit: (String) -> Unit = {},
     onTrackClick: (Track, List<Track>) -> Unit,
+    onHistoryItemClick: (SearchHistoryEntry) -> Unit = {},
+    onRemoveHistoryItem: (String) -> Unit = {},
+    onClearSearchHistory: () -> Unit = {},
     onLikeTrackClick: (Track) -> Unit,
     onMoreTrackClick: (Track) -> Unit,
     onCategoryClick: (GenreCategory) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -108,6 +123,17 @@ fun SearchScreen(
                     ),
                     singleLine = true,
                     cursorBrush = SolidColor(RogTextGold),
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = ImeAction.Search
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            if (searchQuery.isNotBlank()) {
+                                onSearchSubmit(searchQuery)
+                            }
+                            keyboardController?.hide()
+                        }
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -135,7 +161,7 @@ fun SearchScreen(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Content Area: Results list or Browse Categories Grid
+        // Content Area: Results list or Browse Categories Grid with Recent Searches
         if (searchQuery.trim().isNotEmpty()) {
             if (searchResults.isEmpty() && !isSearching) {
                 Box(
@@ -186,7 +212,7 @@ fun SearchScreen(
                 }
             }
         } else {
-            // Browse Categories Grid
+            // Browse Categories Grid with Spotify-like Recent Searches
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize(),
@@ -194,6 +220,58 @@ fun SearchScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                // Spotify-style "Recent searches" section
+                if (searchHistory.isNotEmpty()) {
+                    item(span = { GridItemSpan(2) }) {
+                        Text(
+                            text = "Recent searches",
+                            fontSize = 18.sp,
+                            fontFamily = CircularFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            color = RogTextPrimary,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                        )
+                    }
+
+                    items(
+                        items = searchHistory,
+                        key = { it.id },
+                        span = { GridItemSpan(2) }
+                    ) { entry ->
+                        SearchHistoryItemRow(
+                            entry = entry,
+                            isPlaying = entry.track?.id == currentTrackId,
+                            onClick = { onHistoryItemClick(entry) },
+                            onRemove = { onRemoveHistoryItem(entry.id) }
+                        )
+                    }
+
+                    item(span = { GridItemSpan(2) }) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp, bottom = 14.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .border(1.dp, RogSurfaceHighlight, RoundedCornerShape(20.dp))
+                                    .clickable { onClearSearchHistory() }
+                                    .padding(horizontal = 18.dp, vertical = 7.dp)
+                            ) {
+                                Text(
+                                    text = "Clear recent searches",
+                                    fontSize = 12.5.sp,
+                                    fontFamily = CircularFontFamily,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = RogTextPrimary
+                                )
+                            }
+                        }
+                    }
+                }
+
                 item(span = { GridItemSpan(2) }) {
                     Text(
                         text = "Browse all",
@@ -201,11 +279,11 @@ fun SearchScreen(
                         fontFamily = CircularFontFamily,
                         fontWeight = FontWeight.Bold,
                         color = RogTextPrimary,
-                        modifier = Modifier.padding(vertical = 4.dp)
+                        modifier = Modifier.padding(top = if (searchHistory.isNotEmpty()) 6.dp else 4.dp, bottom = 4.dp)
                     )
                 }
 
-                items(categories) { category ->
+                items(categories, key = { it.id }) { category ->
                     GenreBrowseCard(
                         category = category,
                         onClick = { onCategoryClick(category) }
@@ -215,3 +293,4 @@ fun SearchScreen(
         }
     }
 }
+

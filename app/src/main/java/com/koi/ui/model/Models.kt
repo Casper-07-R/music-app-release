@@ -99,3 +99,17 @@ enum class NavigationTab(val label: String) {
     YOUR_LIBRARY("Your Library"),
     PROFILE("Profile")
 }
+
+enum class SearchHistoryType {
+    TRACK,
+    QUERY
+}
+
+data class SearchHistoryEntry(
+    val id: String,
+    val type: SearchHistoryType,
+    val track: Track? = null,
+    val query: String? = null,
+    val timestamp: Long = System.currentTimeMillis()
+)
+

@@ -25,8 +25,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import androidx.lifecycle.viewmodel.compose.viewModel
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
@@ -34,6 +37,7 @@ import androidx.compose.material.icons.Icons
 import com.koi.backend.player.BatteryOptimizationHelper
 import com.koi.backend.audio.AudioProfile
 import com.koi.backend.audio.SpatialMode
+import com.koi.ui.components.AddSongsToPlaylistSheet
 import com.koi.ui.components.EightDAudioStudioSheet
 import com.koi.ui.components.EightDProfileSelectorSheet
 import com.koi.ui.components.EqualizerProfilesSheet
@@ -42,6 +46,7 @@ import com.koi.ui.components.NowPlayingMiniBar
 import com.koi.ui.components.SleepTimerSheet
 import com.koi.ui.components.KoiBottomNavBar
 import com.koi.ui.model.NavigationTab
+import com.koi.ui.model.SearchHistoryType
 import com.koi.ui.screens.HomeScreen
 import com.koi.ui.screens.LibraryScreen
 import com.koi.ui.screens.PlaylistDetailScreen
@@ -108,6 +113,9 @@ fun KoiApp(
         }
     }
 
+    BackHandler(enabled = uiState.showAddSongsSheet) {
+        viewModel.closeAddSongsSheet()
+    }
     BackHandler(enabled = uiState.showEqualizerSheet) {
         viewModel.closeEqualizerSheet()
     }
@@ -178,7 +186,8 @@ fun KoiApp(
                         }
                     },
                     onLikeTrackClick = { track -> viewModel.toggleLike(track) },
-                    onMoreTrackClick = { track -> viewModel.openAddToPlaylistDialog(track) }
+                    onMoreTrackClick = { track -> viewModel.openAddToPlaylistDialog(track) },
+                    onAddSongsClick = { viewModel.openAddSongsSheet() }
                 )
             } else {
                 when (uiState.selectedTab) {
@@ -210,10 +219,38 @@ fun KoiApp(
                             categories = uiState.categories,
                             searchQuery = uiState.searchQuery,
                             searchResults = uiState.searchResults,
+                            searchHistory = uiState.searchHistory,
                             isSearching = uiState.isSearching,
                             currentTrackId = uiState.currentTrack.id,
                             onQueryChanged = { viewModel.onSearchQueryChanged(it) },
-                            onTrackClick = { track, queue -> viewModel.playTrack(track, queue) },
+                            onSearchSubmit = { viewModel.addQueryToSearchHistory(it) },
+                            onTrackClick = { track, queue ->
+                                viewModel.addTrackToSearchHistory(track)
+                                viewModel.playTrack(track, queue)
+                            },
+                            onHistoryItemClick = { entry ->
+                                when (entry.type) {
+                                    SearchHistoryType.TRACK -> {
+                                        entry.track?.let { track ->
+                                            viewModel.addTrackToSearchHistory(track)
+                                            val queue = uiState.searchHistory.mapNotNull { it.track }
+                                            viewModel.playTrack(track, if (queue.isNotEmpty()) queue else listOf(track))
+                                        }
+                                    }
+                                    SearchHistoryType.QUERY -> {
+                                        entry.query?.let { query ->
+                                            viewModel.onSearchQueryChanged(query)
+                                            viewModel.addQueryToSearchHistory(query)
+                                        }
+                                    }
+                                }
+                            },
+                            onRemoveHistoryItem = { id ->
+                                viewModel.removeSearchHistoryItem(id)
+                            },
+                            onClearSearchHistory = {
+                                viewModel.clearSearchHistory()
+                            },
                             onLikeTrackClick = { track -> viewModel.toggleLike(track) },
                             onMoreTrackClick = { track -> viewModel.openAddToPlaylistDialog(track) },
                             onCategoryClick = { category ->
@@ -314,13 +351,13 @@ fun KoiApp(
                 activeProfileName = activeProfileName,
                 onDownloadClick = { viewModel.toggleDownload(uiState.currentTrack) },
                 onEightDClick = { viewModel.cycleSpatialMode() },
-                onEightDLongClick = { viewModel.openProfileSelectorSheet() }
+                onEightDLongClick = { viewModel.openProfileSelectorSheet() },
+                onAddToPlaylistClick = { viewModel.openAddToPlaylistDialog(uiState.currentTrack) }
             )
         }
 
         // 8D Audio Profile Selector Modal Bottom Sheet (Triggered by Long-Press on 8D button)
         if (uiState.showProfileSelectorSheet) {
-            val context = LocalContext.current
             EightDProfileSelectorSheet(
                 activeProfile = dspConfig.activeProfile,
                 spatialMode = dspConfig.spatialMode,
@@ -373,6 +410,33 @@ fun KoiApp(
             )
         }
 
+        // Add Songs To Playlist Modal Bottom Sheet
+        if (uiState.showAddSongsSheet && uiState.selectedPlaylist != null) {
+            AddSongsToPlaylistSheet(
+                playlist = uiState.selectedPlaylist!!,
+                searchQuery = uiState.playlistSearchQuery,
+                searchResults = uiState.playlistSearchResults,
+                isSearching = uiState.isSearchingForPlaylist,
+                suggestedTracks = uiState.searchHistory.mapNotNull { it.track },
+                onQueryChange = { viewModel.onPlaylistSearchQueryChanged(it) },
+                onAddTrack = { track ->
+                    if (uiState.selectedPlaylist!!.isLikedSongs) {
+                        viewModel.toggleLike(track)
+                    } else {
+                        viewModel.addTrackToPlaylist(uiState.selectedPlaylist!!.id, track)
+                    }
+                },
+                onRemoveTrack = { track ->
+                    if (uiState.selectedPlaylist!!.isLikedSongs) {
+                        viewModel.toggleLike(track)
+                    } else {
+                        viewModel.removeTrackFromPlaylist(uiState.selectedPlaylist!!.id, track)
+                    }
+                },
+                onDismiss = { viewModel.closeAddSongsSheet() }
+            )
+        }
+
         // Create Playlist Dialog
         if (uiState.showCreatePlaylistDialog) {
             var playlistName by remember { mutableStateOf("") }
@@ -422,56 +486,213 @@ fun KoiApp(
         // Add to Playlist Dialog
         uiState.trackForPlaylistMenu?.let { trackToAdd ->
             val customPlaylists = uiState.libraryPlaylists.filter { !it.isLikedSongs }
+            var isCreatingPlaylist by remember(trackToAdd.id) { mutableStateOf(false) }
+            var newPlaylistName by remember(trackToAdd.id) { mutableStateOf("") }
+
             AlertDialog(
                 onDismissRequest = { viewModel.closeAddToPlaylistDialog() },
                 title = {
-                    Text(
-                        text = "Add to playlist",
-                        fontFamily = CircularFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        color = SpotifyTextPrimary
-                    )
+                    Column {
+                        Text(
+                            text = if (isCreatingPlaylist) "New playlist" else "Add to playlist",
+                            fontFamily = CircularFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            color = SpotifyTextPrimary,
+                            fontSize = 18.sp
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = "${trackToAdd.title} • ${trackToAdd.artist}",
+                            fontFamily = CircularFontFamily,
+                            fontSize = 12.sp,
+                            color = SpotifyTextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 },
                 text = {
-                    if (customPlaylists.isEmpty()) {
-                        Text(
-                            text = "No playlists found. Create a playlist first in Your Library!",
-                            fontFamily = CircularFontFamily,
-                            color = SpotifyTextSecondary
-                        )
+                    if (isCreatingPlaylist) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = "Give your playlist a name:",
+                                fontSize = 13.sp,
+                                fontFamily = CircularFontFamily,
+                                color = SpotifyTextSecondary,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            TextField(
+                                value = newPlaylistName,
+                                onValueChange = { newPlaylistName = it },
+                                placeholder = { Text("My playlist #1", color = SpotifyTextSecondary) },
+                                singleLine = true,
+                                colors = TextFieldDefaults.colors(
+                                    focusedTextColor = SpotifyTextPrimary,
+                                    unfocusedTextColor = SpotifyTextPrimary,
+                                    focusedContainerColor = SpotifySurfaceHighlight,
+                                    unfocusedContainerColor = SpotifySurfaceHighlight,
+                                    cursorColor = SpotifyGreen,
+                                    focusedIndicatorColor = SpotifyGreen,
+                                    unfocusedIndicatorColor = Color.Transparent
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     } else {
-                        LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                            items(customPlaylists) { pl ->
-                                Row(
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            // Row to create new playlist
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        isCreatingPlaylist = true
+                                        newPlaylistName = ""
+                                    }
+                                    .padding(vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            viewModel.addTrackToPlaylist(pl.id, trackToAdd)
-                                        }
-                                        .padding(vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .size(38.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(SpotifySurfaceHighlight),
+                                    contentAlignment = Alignment.Center
                                 ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_plus),
+                                        contentDescription = "New playlist",
+                                        tint = SpotifyGreen,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
                                     Text(
-                                        text = pl.title,
+                                        text = "New playlist",
                                         fontSize = 15.sp,
                                         fontFamily = CircularFontFamily,
                                         fontWeight = FontWeight.Bold,
                                         color = SpotifyTextPrimary
                                     )
-                                    Spacer(modifier = Modifier.weight(1f))
                                     Text(
-                                        text = "${pl.trackCount} songs",
+                                        text = "Create and add to playlist",
                                         fontSize = 12.sp,
+                                        fontFamily = CircularFontFamily,
                                         color = SpotifyTextSecondary
                                     )
+                                }
+                            }
+
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 6.dp),
+                                color = SpotifyDivider
+                            )
+
+                            if (customPlaylists.isEmpty()) {
+                                Text(
+                                    text = "No playlists found yet. Tap \"New playlist\" above to create one!",
+                                    fontFamily = CircularFontFamily,
+                                    fontSize = 13.sp,
+                                    color = SpotifyTextSecondary,
+                                    modifier = Modifier.padding(vertical = 12.dp)
+                                )
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 260.dp)
+                                ) {
+                                    items(customPlaylists) { pl ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable {
+                                                    viewModel.addTrackToPlaylist(pl.id, trackToAdd)
+                                                    Toast.makeText(context, "Added to ${pl.title}", Toast.LENGTH_SHORT).show()
+                                                }
+                                                .padding(vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (!pl.thumbnailUrl.isNullOrEmpty()) {
+                                                AsyncImage(
+                                                    model = pl.thumbnailUrl,
+                                                    contentDescription = pl.title,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier
+                                                        .size(38.dp)
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                )
+                                            } else {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(38.dp)
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(SpotifySurfaceHighlight),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        painter = painterResource(id = R.drawable.ic_library),
+                                                        contentDescription = null,
+                                                        tint = SpotifyTextSecondary,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = pl.title,
+                                                    fontSize = 15.sp,
+                                                    fontFamily = CircularFontFamily,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = SpotifyTextPrimary,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = "${pl.trackCount} ${if (pl.trackCount == 1) "song" else "songs"}",
+                                                    fontSize = 12.sp,
+                                                    fontFamily = CircularFontFamily,
+                                                    color = SpotifyTextSecondary
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { viewModel.closeAddToPlaylistDialog() }) {
-                        Text("Close", color = SpotifyTextSecondary)
+                    if (isCreatingPlaylist) {
+                        TextButton(
+                            onClick = {
+                                if (newPlaylistName.isNotBlank()) {
+                                    viewModel.createPlaylistAndAddTrack(newPlaylistName, trackToAdd)
+                                    Toast.makeText(context, "Added to ${newPlaylistName.trim()}", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            enabled = newPlaylistName.isNotBlank()
+                        ) {
+                            Text(
+                                "Create & Add",
+                                color = if (newPlaylistName.isNotBlank()) SpotifyGreen else SpotifyTextMuted,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else {
+                        TextButton(onClick = { viewModel.closeAddToPlaylistDialog() }) {
+                            Text("Close", color = SpotifyTextSecondary)
+                        }
+                    }
+                },
+                dismissButton = {
+                    if (isCreatingPlaylist) {
+                        TextButton(onClick = { isCreatingPlaylist = false }) {
+                            Text("Back", color = SpotifyTextSecondary)
+                        }
                     }
                 },
                 containerColor = SpotifySurface

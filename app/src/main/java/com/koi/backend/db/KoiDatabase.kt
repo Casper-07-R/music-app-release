@@ -19,6 +19,14 @@ data class LocalPlaylistInfo(
     val updatedAt: Long
 )
 
+data class SearchHistoryRecord(
+    val id: String,
+    val type: String,
+    val queryText: String? = null,
+    val songItem: SongItem? = null,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
 
     companion object {
@@ -128,6 +136,18 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
             );
             """.trimIndent()
         )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS search_history (
+                id TEXT PRIMARY KEY,
+                type TEXT NOT NULL,
+                query_text TEXT,
+                song_json TEXT,
+                timestamp INTEGER NOT NULL
+            );
+            """.trimIndent()
+        )
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -141,6 +161,19 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
         } catch (_: Exception) {}
         try {
             db.execSQL("ALTER TABLE stream_url_cache ADD COLUMN client_name TEXT;")
+        } catch (_: Exception) {}
+        try {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS search_history (
+                    id TEXT PRIMARY KEY,
+                    type TEXT NOT NULL,
+                    query_text TEXT,
+                    song_json TEXT,
+                    timestamp INTEGER NOT NULL
+                );
+                """.trimIndent()
+            )
         } catch (_: Exception) {}
     }
 
@@ -618,5 +651,111 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
     fun deleteCustomPreset(name: String) {
         val db = writableDatabase
         db.delete("custom_presets", "name = ?", arrayOf(name))
+    }
+
+    // --- SEARCH HISTORY ---
+
+    fun saveSearchHistoryTrack(song: SongItem) {
+        val db = writableDatabase
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS search_history (
+                id TEXT PRIMARY KEY,
+                type TEXT NOT NULL,
+                query_text TEXT,
+                song_json TEXT,
+                timestamp INTEGER NOT NULL
+            );
+            """.trimIndent()
+        )
+        val now = System.currentTimeMillis()
+        val cv = ContentValues().apply {
+            put("id", "track_${song.videoId}")
+            put("type", "TRACK")
+            putNull("query_text")
+            put("song_json", gson.toJson(song))
+            put("timestamp", now)
+        }
+        db.insertWithOnConflict("search_history", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+        try {
+            db.execSQL("DELETE FROM search_history WHERE id NOT IN (SELECT id FROM search_history ORDER BY timestamp DESC LIMIT 50);")
+        } catch (_: Exception) {}
+    }
+
+    fun saveSearchHistoryQuery(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return
+        val db = writableDatabase
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS search_history (
+                id TEXT PRIMARY KEY,
+                type TEXT NOT NULL,
+                query_text TEXT,
+                song_json TEXT,
+                timestamp INTEGER NOT NULL
+            );
+            """.trimIndent()
+        )
+        val now = System.currentTimeMillis()
+        val cv = ContentValues().apply {
+            put("id", "query_${trimmed.lowercase()}")
+            put("type", "QUERY")
+            put("query_text", trimmed)
+            putNull("song_json")
+            put("timestamp", now)
+        }
+        db.insertWithOnConflict("search_history", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+        try {
+            db.execSQL("DELETE FROM search_history WHERE id NOT IN (SELECT id FROM search_history ORDER BY timestamp DESC LIMIT 50);")
+        } catch (_: Exception) {}
+    }
+
+    fun removeSearchHistoryItem(id: String) {
+        val db = writableDatabase
+        db.delete("search_history", "id = ?", arrayOf(id))
+    }
+
+    fun clearSearchHistory() {
+        val db = writableDatabase
+        db.execSQL("CREATE TABLE IF NOT EXISTS search_history (id TEXT PRIMARY KEY, type TEXT NOT NULL, query_text TEXT, song_json TEXT, timestamp INTEGER NOT NULL);")
+        db.delete("search_history", null, null)
+    }
+
+    fun getSearchHistory(limit: Int = 20): List<SearchHistoryRecord> {
+        val db = readableDatabase
+        db.execSQL("CREATE TABLE IF NOT EXISTS search_history (id TEXT PRIMARY KEY, type TEXT NOT NULL, query_text TEXT, song_json TEXT, timestamp INTEGER NOT NULL);")
+        val list = mutableListOf<SearchHistoryRecord>()
+        val cursor = db.rawQuery(
+            "SELECT id, type, query_text, song_json, timestamp FROM search_history ORDER BY timestamp DESC LIMIT ?",
+            arrayOf(limit.toString())
+        )
+        while (cursor.moveToNext()) {
+            val id = cursor.getString(0)
+            val type = cursor.getString(1)
+            val queryText = cursor.getString(2)
+            val songJson = cursor.getString(3)
+            val timestamp = cursor.getLong(4)
+
+            val songItem = if (type == "TRACK" && !songJson.isNullOrEmpty()) {
+                try {
+                    gson.fromJson(songJson, SongItem::class.java)
+                } catch (_: Exception) {
+                    null
+                }
+            } else null
+
+            list.add(
+                SearchHistoryRecord(
+                    id = id,
+                    type = type,
+                    queryText = queryText,
+                    songItem = songItem,
+                    timestamp = timestamp
+                )
+            )
+        }
+        cursor.close()
+        return list
     }
 }
