@@ -1,0 +1,60 @@
+name: Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish Release & APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build Signed Release APK
+        run: ./gradlew assembleRelease
+
+      - name: Copy & Rename APK for Release
+        run: |
+          mkdir -p build_output
+          cp app/build/outputs/apk/release/app-release.apk build_output/Koi-v1.0.0.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Koi ${{ github.ref_name }} - Initial Release 🎏
+          tag_name: ${{ github.ref_name }}
+          files: build_output/Koi-v1.0.0.apk
+          body: |
+            ## Koi ${{ github.ref_name }} - Initial Release 🎏
+
+            Welcome to **Koi**, a high-fidelity music streaming app built with Kotlin Jetpack Compose and Material 3 design tokens.
+
+            ### ✨ Added Features
+            * **Full-fidelity Streaming**: Millions of songs, albums, and curated playlists powered by InnerTube.
+            * **Now Playing Player**: Full-screen player sheet with synchronized lyrics, scrubber, and floating mini-player.
+            * **8D Audio & Spatial Studio**: Real-time 8D audio spatializer with custom presets (Lo-Fi, Synthwave, Deep Focus, Nightcore).
+            * **10-Band Equalizer**: Dynamic frequency sculpting with multiple acoustic presets.
+            * **Offline Audio Downloader**: High-quality M4A/MP3 downloading with background caching.
+            * **Playlist & Library Management**: Custom playlists, Liked Songs library, and search history.
+            * **In-App Background Update Checker**: Automatic background checks on launch with update details, release changelogs, and one-tap in-app updating.
+
+            ### 🐛 Bug Fixes & Stability
+            * Android 13+ background media session notification controls.
+            * Elevated manage mode playlist removal bar.
+            * Smooth audio DSP filter transitions and battery optimization handling.
