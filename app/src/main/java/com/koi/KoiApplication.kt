@@ -45,8 +45,15 @@ class KoiApplication : Application(), ImageLoaderFactory {
 
         initMediaCache()
         database = KoiDatabase(this)
+        try {
+            val prefs = getSharedPreferences("koi_prefs", MODE_PRIVATE)
+            if (prefs.getInt("lyrics_cache_v6", 0) < 6) {
+                database.clearLyricsCache()
+                prefs.edit().putInt("lyrics_cache_v6", 6).apply()
+            }
+        } catch (_: Exception) {}
         innerTube = InnerTubeClient()
-        lyricsProvider = LyricsProvider()
+        lyricsProvider = LyricsProvider(innerTube = innerTube)
         playerEngine = PlayerEngine(this, innerTube, lyricsProvider, database)
         updateManager = AppUpdateManager(this, innerTube.okHttpClient)
     }

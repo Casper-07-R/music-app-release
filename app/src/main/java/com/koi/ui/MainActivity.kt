@@ -52,6 +52,7 @@ import com.koi.ui.components.UpdateAvailableDialog
 import com.koi.ui.components.KoiBottomNavBar
 import com.koi.ui.model.NavigationTab
 import com.koi.ui.model.SearchHistoryType
+import com.koi.ui.screens.ArtistProfileScreen
 import com.koi.ui.screens.DownloadManagerScreen
 import com.koi.ui.screens.HomeScreen
 import com.koi.ui.screens.LibraryScreen
@@ -148,6 +149,9 @@ fun KoiApp(
     BackHandler(enabled = uiState.showSettingsScreen && !uiState.isFullScreenPlayerExpanded && !uiState.showEightDStudioSheet && !uiState.showEqualizerSheet) {
         viewModel.closeSettings()
     }
+    BackHandler(enabled = uiState.artistStack.isNotEmpty() && uiState.selectedPlaylist == null && !uiState.isFullScreenPlayerExpanded && !uiState.showEightDStudioSheet && !uiState.showEqualizerSheet && !uiState.showSettingsScreen && !uiState.showDownloadManager) {
+        viewModel.popArtistProfile()
+    }
 
     Box(
         modifier = Modifier
@@ -232,6 +236,41 @@ fun KoiApp(
                     onClearAllDownloads = { viewModel.clearAllDownloads() },
                     onToggleLike = { track -> viewModel.toggleLike(track) }
                 )
+            } else if (uiState.artistStack.isNotEmpty() || uiState.currentArtistProfile != null || uiState.isLoadingArtistProfile) {
+                val isFollowed = uiState.currentArtistProfile?.let { uiState.followedArtistIds.contains(it.id) } ?: false
+                ArtistProfileScreen(
+                    profile = uiState.currentArtistProfile,
+                    isLoading = uiState.isLoadingArtistProfile,
+                    isFollowed = isFollowed,
+                    currentTrackId = uiState.currentTrack.id,
+                    isPlaying = uiState.isPlaying,
+                    onBackClick = { viewModel.popArtistProfile() },
+                    onPlayAllClick = { songs -> viewModel.playArtistTopSongs(songs) },
+                    onShuffleClick = { songs -> viewModel.playArtistTopSongs(songs.shuffled()) },
+                    onSongClick = { song, queue ->
+                        val index = queue.indexOfFirst { it.videoId == song.videoId }.coerceAtLeast(0)
+                        viewModel.playArtistTopSongs(queue, index)
+                    },
+                    onAlbumClick = { album ->
+                        viewModel.openAlbum(album, uiState.currentArtistProfile?.name ?: "")
+                    },
+                    onSingleClick = { single ->
+                        viewModel.openAlbum(single, uiState.currentArtistProfile?.name ?: "")
+                    },
+                    onPlaylistClick = { pl ->
+                        viewModel.openSearchPlaylist(pl)
+                    },
+                    onSimilarArtistClick = { artist ->
+                        viewModel.openArtistProfile(artist.id)
+                    },
+                    onToggleFollowClick = {
+                        uiState.currentArtistProfile?.let {
+                            viewModel.toggleFollowArtist(it.id, it.name, it.headerThumbnailUrl ?: it.avatarThumbnailUrl)
+                        }
+                    },
+                    onLikeSongClick = { track -> viewModel.toggleLike(track) },
+                    onMoreSongClick = { track -> viewModel.openAddToPlaylistDialog(track) }
+                )
             } else {
                 when (uiState.selectedTab) {
                     NavigationTab.HOME -> {
@@ -266,11 +305,23 @@ fun KoiApp(
                             searchHistory = uiState.searchHistory,
                             isSearching = uiState.isSearching,
                             currentTrackId = uiState.currentTrack.id,
+                            searchFilter = uiState.searchFilter,
+                            comprehensiveResult = uiState.comprehensiveSearchResult,
+                            artistResults = uiState.artistFilterResults,
+                            playlistResults = uiState.playlistFilterResults,
+                            onFilterSelected = { viewModel.setSearchFilter(it) },
                             onQueryChanged = { viewModel.onSearchQueryChanged(it) },
                             onSearchSubmit = { viewModel.addQueryToSearchHistory(it) },
                             onTrackClick = { track, queue ->
                                 viewModel.addTrackToSearchHistory(track)
                                 viewModel.playTrack(track, queue)
+                            },
+                            onArtistClick = { artist ->
+                                viewModel.addArtistToSearchHistory(artist)
+                                viewModel.openArtistProfile(artist.id)
+                            },
+                            onPlaylistClick = { playlist ->
+                                viewModel.openSearchPlaylist(playlist)
                             },
                             onHistoryItemClick = { entry ->
                                 when (entry.type) {
@@ -285,6 +336,16 @@ fun KoiApp(
                                         entry.query?.let { query ->
                                             viewModel.onSearchQueryChanged(query)
                                             viewModel.addQueryToSearchHistory(query)
+                                        }
+                                    }
+                                    SearchHistoryType.ARTIST -> {
+                                        entry.artist?.let { artist ->
+                                            viewModel.openArtistProfile(artist.id)
+                                        }
+                                    }
+                                    SearchHistoryType.PLAYLIST -> {
+                                        entry.playlist?.let { pl ->
+                                            viewModel.openSearchPlaylist(pl)
                                         }
                                     }
                                 }
@@ -384,6 +445,7 @@ fun KoiApp(
                 track = uiState.currentTrack,
                 isPlaying = uiState.isPlaying,
                 isBuffering = uiState.isBuffering,
+                isFindingLyrics = uiState.isFindingLyrics,
                 currentPositionSeconds = uiState.currentPositionSeconds,
                 isShuffleActive = uiState.isShuffleActive,
                 isRepeatActive = uiState.isRepeatActive,

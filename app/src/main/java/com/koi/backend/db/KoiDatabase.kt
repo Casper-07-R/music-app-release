@@ -5,7 +5,9 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.google.gson.Gson
+import com.koi.backend.innertube.ArtistItem
 import com.koi.backend.innertube.PlaybackStream
+import com.koi.backend.innertube.PlaylistItem
 import com.koi.backend.innertube.SongItem
 import com.koi.backend.lyrics.Lyrics
 import com.koi.ui.model.Playlist
@@ -28,6 +30,8 @@ data class SearchHistoryRecord(
     val type: String,
     val queryText: String? = null,
     val songItem: SongItem? = null,
+    val artistItem: ArtistItem? = null,
+    val playlistItem: PlaylistItem? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -723,6 +727,11 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
         db.delete("lyrics_cache", null, null)
     }
 
+    fun clearLyricsCache() {
+        val db = writableDatabase
+        db.delete("lyrics_cache", null, null)
+    }
+
     // --- DOWNLOADS MANAGEMENT ---
 
     fun isDownloaded(videoId: String): Boolean {
@@ -1118,6 +1127,60 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
         } catch (_: Exception) {}
     }
 
+    fun saveSearchHistoryArtist(artist: ArtistItem) {
+        val db = writableDatabase
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS search_history (
+                id TEXT PRIMARY KEY,
+                type TEXT NOT NULL,
+                query_text TEXT,
+                song_json TEXT,
+                timestamp INTEGER NOT NULL
+            );
+            """.trimIndent()
+        )
+        val now = System.currentTimeMillis()
+        val cv = ContentValues().apply {
+            put("id", "artist_${artist.id}")
+            put("type", "ARTIST")
+            putNull("query_text")
+            put("song_json", gson.toJson(artist))
+            put("timestamp", now)
+        }
+        db.insertWithOnConflict("search_history", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+        try {
+            db.execSQL("DELETE FROM search_history WHERE id NOT IN (SELECT id FROM search_history ORDER BY timestamp DESC LIMIT 50);")
+        } catch (_: Exception) {}
+    }
+
+    fun saveSearchHistoryPlaylist(playlist: PlaylistItem) {
+        val db = writableDatabase
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS search_history (
+                id TEXT PRIMARY KEY,
+                type TEXT NOT NULL,
+                query_text TEXT,
+                song_json TEXT,
+                timestamp INTEGER NOT NULL
+            );
+            """.trimIndent()
+        )
+        val now = System.currentTimeMillis()
+        val cv = ContentValues().apply {
+            put("id", "playlist_${playlist.id}")
+            put("type", "PLAYLIST")
+            putNull("query_text")
+            put("song_json", gson.toJson(playlist))
+            put("timestamp", now)
+        }
+        db.insertWithOnConflict("search_history", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+        try {
+            db.execSQL("DELETE FROM search_history WHERE id NOT IN (SELECT id FROM search_history ORDER BY timestamp DESC LIMIT 50);")
+        } catch (_: Exception) {}
+    }
+
     fun removeSearchHistoryItem(id: String) {
         val db = writableDatabase
         db.delete("search_history", "id = ?", arrayOf(id))
@@ -1152,17 +1215,89 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
                 }
             } else null
 
+            val artistItem = if (type == "ARTIST" && !songJson.isNullOrEmpty()) {
+                try {
+                    gson.fromJson(songJson, ArtistItem::class.java)
+                } catch (_: Exception) {
+                    null
+                }
+            } else null
+
+            val playlistItem = if (type == "PLAYLIST" && !songJson.isNullOrEmpty()) {
+                try {
+                    gson.fromJson(songJson, PlaylistItem::class.java)
+                } catch (_: Exception) {
+                    null
+                }
+            } else null
+
             list.add(
                 SearchHistoryRecord(
                     id = id,
                     type = type,
                     queryText = queryText,
                     songItem = songItem,
+                    artistItem = artistItem,
+                    playlistItem = playlistItem,
                     timestamp = timestamp
                 )
             )
         }
         cursor.close()
         return list
+    }
+
+    // --- FOLLOWED ARTISTS ---
+
+    fun toggleFollowArtist(artistId: String, name: String = "", thumbnailUrl: String? = null): Boolean {
+        val db = writableDatabase
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS followed_artists (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                thumbnail_url TEXT,
+                timestamp INTEGER NOT NULL
+            );
+            """.trimIndent()
+        )
+        val cursor = db.rawQuery("SELECT 1 FROM followed_artists WHERE id = ?", arrayOf(artistId))
+        val isFollowed = cursor.moveToFirst()
+        cursor.close()
+
+        return if (isFollowed) {
+            db.delete("followed_artists", "id = ?", arrayOf(artistId))
+            false
+        } else {
+            val cv = ContentValues().apply {
+                put("id", artistId)
+                put("name", name)
+                put("thumbnail_url", thumbnailUrl)
+                put("timestamp", System.currentTimeMillis())
+            }
+            db.insertWithOnConflict("followed_artists", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+            true
+        }
+    }
+
+    fun isArtistFollowed(artistId: String): Boolean {
+        val db = readableDatabase
+        db.execSQL("CREATE TABLE IF NOT EXISTS followed_artists (id TEXT PRIMARY KEY, name TEXT NOT NULL, thumbnail_url TEXT, timestamp INTEGER NOT NULL);")
+        val cursor = db.rawQuery("SELECT 1 FROM followed_artists WHERE id = ?", arrayOf(artistId))
+        val exists = cursor.moveToFirst()
+        cursor.close()
+        return exists
+    }
+
+    fun getFollowedArtistIds(): Set<String> {
+        val db = readableDatabase
+        db.execSQL("CREATE TABLE IF NOT EXISTS followed_artists (id TEXT PRIMARY KEY, name TEXT NOT NULL, thumbnail_url TEXT, timestamp INTEGER NOT NULL);")
+        val set = mutableSetOf<String>()
+        val cursor = db.rawQuery("SELECT id FROM followed_artists", null)
+        while (cursor.moveToNext()) {
+            set.add(cursor.getString(0))
+        }
+        cursor.close()
+        return set
     }
 }

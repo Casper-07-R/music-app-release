@@ -1,9 +1,14 @@
 package com.koi.ui.components
 
+import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -28,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -46,6 +52,7 @@ fun NowPlayingFullScreenSheet(
     track: Track,
     isPlaying: Boolean,
     isBuffering: Boolean = false,
+    isFindingLyrics: Boolean = false,
     currentPositionSeconds: Float,
     isShuffleActive: Boolean,
     isRepeatActive: Boolean,
@@ -84,12 +91,22 @@ fun NowPlayingFullScreenSheet(
     val remainingRemainderSeconds = (remainingSeconds % 60).toInt()
     val remainingString = String.format("-%d:%02d", remainingMinutes, remainingRemainderSeconds)
 
+    val context = LocalContext.current
+    val lyricPrefs = remember(context) {
+        context.getSharedPreferences("koi_lyric_offsets", Context.MODE_PRIVATE)
+    }
+    var userOffsetMs by remember(track.id) {
+        mutableLongStateOf(lyricPrefs.getLong("offset_${track.id}", 0L))
+    }
+
+    val BASE_LEAD_IN_MS = 0L
     val currentPositionMs = (currentPositionSeconds * 1000).toLong()
-    val activeLyricIndex = remember(currentPositionMs, track.syncedLyrics) {
+    val effectivePositionMs = (currentPositionMs + userOffsetMs + BASE_LEAD_IN_MS).coerceAtLeast(0L)
+    val activeLyricIndex = remember(effectivePositionMs, track.syncedLyrics) {
         if (track.syncedLyrics.isNotEmpty()) {
-            track.syncedLyrics.indexOfLast { (it.timeMs ?: 0L) <= currentPositionMs }.coerceAtLeast(0)
+            track.syncedLyrics.indexOfLast { (it.timeMs ?: 0L) <= effectivePositionMs }
         } else {
-            0
+            -1
         }
     }
 
@@ -100,18 +117,19 @@ fun NowPlayingFullScreenSheet(
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
-        if (showFullLyrics && track.syncedLyrics.isNotEmpty()) {
-            // Full Screen Synced Lyrics View (Minimal)
+        if (showFullLyrics) {
+            BackHandler(enabled = true) {
+                showFullLyrics = false
+            }
+
+            // Full Screen Lyrics View (Minimal)
             val listState = rememberLazyListState()
-            val coroutineScope = rememberCoroutineScope()
 
             LaunchedEffect(activeLyricIndex) {
                 if (activeLyricIndex >= 0 && activeLyricIndex < track.syncedLyrics.size) {
-                    coroutineScope.launch {
-                        listState.animateScrollToItem(
-                            (activeLyricIndex - 2).coerceAtLeast(0)
-                        )
-                    }
+                    listState.animateScrollToItem(
+                        (activeLyricIndex - 2).coerceAtLeast(0)
+                    )
                 }
             }
 
@@ -135,33 +153,231 @@ fun NowPlayingFullScreenSheet(
                             modifier = Modifier.size(24.dp)
                         )
                     }
-                    Text(
-                        text = "Lyrics",
-                        fontSize = 14.sp,
-                        fontFamily = CircularFontFamily,
-                        fontWeight = FontWeight.SemiBold,
-                        color = RogTextPrimary
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 12.dp)
+                    ) {
+                        Text(
+                            text = if (track.syncedLyrics.isNotEmpty()) "Lyrics (Live)" else "Lyrics",
+                            fontSize = 14.sp,
+                            fontFamily = CircularFontFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            color = RogTextPrimary
+                        )
+                        Text(
+                            text = "${track.title} • ${track.artist}",
+                            fontSize = 11.5.sp,
+                            fontFamily = CircularFontFamily,
+                            fontWeight = FontWeight.Normal,
+                            color = RogTextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     Spacer(modifier = Modifier.size(24.dp))
                 }
 
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(vertical = 40.dp),
-                    verticalArrangement = Arrangement.spacedBy(20.dp)
-                ) {
-                    itemsIndexed(track.syncedLyrics) { index, line ->
-                        val isCurrent = index == activeLyricIndex
+                if (track.syncedLyrics.isNotEmpty()) {
+                    // Sync calibration controls
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = RogSurfaceDark,
+                            border = BorderStroke(1.dp, RogBorderSubtle)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                // Nudge earlier (-0.5s)
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            val newOffset = userOffsetMs - 500L
+                                            userOffsetMs = newOffset
+                                            lyricPrefs.edit().putLong("offset_${track.id}", newOffset).apply()
+                                        }
+                                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "-0.5s",
+                                        fontSize = 11.5.sp,
+                                        fontFamily = CircularFontFamily,
+                                        fontWeight = FontWeight.Medium,
+                                        color = RogTextSecondary
+                                    )
+                                }
+
+                                // Nudge earlier (-0.1s)
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            val newOffset = userOffsetMs - 100L
+                                            userOffsetMs = newOffset
+                                            lyricPrefs.edit().putLong("offset_${track.id}", newOffset).apply()
+                                        }
+                                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "-0.1s",
+                                        fontSize = 11.5.sp,
+                                        fontFamily = CircularFontFamily,
+                                        fontWeight = FontWeight.Medium,
+                                        color = RogTextSecondary
+                                    )
+                                }
+
+                                // Sync status / reset
+                                val displayOffset = userOffsetMs / 1000f
+                                val offsetLabel = if (userOffsetMs == 0L) "Sync" else String.format("Sync %+.1fs", displayOffset)
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            userOffsetMs = 0L
+                                            lyricPrefs.edit().remove("offset_${track.id}").apply()
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = offsetLabel,
+                                        fontSize = 11.5.sp,
+                                        fontFamily = CircularFontFamily,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (userOffsetMs != 0L) RogTextGold else RogTextPrimary
+                                    )
+                                }
+
+                                // Nudge later (+0.1s)
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            val newOffset = userOffsetMs + 100L
+                                            userOffsetMs = newOffset
+                                            lyricPrefs.edit().putLong("offset_${track.id}", newOffset).apply()
+                                        }
+                                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "+0.1s",
+                                        fontSize = 11.5.sp,
+                                        fontFamily = CircularFontFamily,
+                                        fontWeight = FontWeight.Medium,
+                                        color = RogTextSecondary
+                                    )
+                                }
+
+                                // Nudge later (+0.5s)
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            val newOffset = userOffsetMs + 500L
+                                            userOffsetMs = newOffset
+                                            lyricPrefs.edit().putLong("offset_${track.id}", newOffset).apply()
+                                        }
+                                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "+0.5s",
+                                        fontSize = 11.5.sp,
+                                        fontFamily = CircularFontFamily,
+                                        fontWeight = FontWeight.Medium,
+                                        color = RogTextSecondary
+                                    )
+                            }
+                        }
+                    }
+                    }
+
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(vertical = 40.dp),
+                        verticalArrangement = Arrangement.spacedBy(20.dp)
+                    ) {
+                        itemsIndexed(track.syncedLyrics) { index, line ->
+                            val isCurrent = index == activeLyricIndex
+                            val textColor by animateColorAsState(
+                                targetValue = if (isCurrent) RogTextGold else RogTextMuted,
+                                animationSpec = tween(durationMillis = 200),
+                                label = "lyricColor"
+                            )
+                            val textAlpha by animateFloatAsState(
+                                targetValue = if (isCurrent) 1f else 0.55f,
+                                animationSpec = tween(durationMillis = 200),
+                                label = "lyricAlpha"
+                            )
+                            val textScale by animateFloatAsState(
+                                targetValue = if (isCurrent) 1.04f else 1f,
+                                animationSpec = tween(durationMillis = 200),
+                                label = "lyricScale"
+                            )
+                            Text(
+                                text = line.text,
+                                fontSize = if (isCurrent) 22.sp else 18.sp,
+                                fontFamily = CircularFontFamily,
+                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                color = textColor,
+                                lineHeight = 30.sp,
+                                textAlign = TextAlign.Start,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .graphicsLayer {
+                                        alpha = textAlpha
+                                        scaleX = textScale
+                                        scaleY = textScale
+                                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
+                                    }
+                                    .clickable {
+                                        line.timeMs?.let { onSeek(it / 1000f) }
+                                    }
+                            )
+                        }
+                    }
+                } else if (track.lyrics.isNotEmpty()) {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(vertical = 40.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        itemsIndexed(track.lyrics) { _, lineText ->
+                            Text(
+                                text = lineText,
+                                fontSize = 18.sp,
+                                fontFamily = CircularFontFamily,
+                                fontWeight = FontWeight.Normal,
+                                color = RogTextPrimary,
+                                lineHeight = 28.sp,
+                                textAlign = TextAlign.Start,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Text(
-                            text = line.text,
-                            fontSize = if (isCurrent) 22.sp else 18.sp,
+                            text = "No lyrics available for this song",
+                            fontSize = 15.sp,
                             fontFamily = CircularFontFamily,
-                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isCurrent) RogTextGold else RogTextMuted,
-                            lineHeight = 30.sp,
-                            textAlign = TextAlign.Start,
-                            modifier = Modifier.fillMaxWidth()
+                            color = RogTextMuted
                         )
                     }
                 }
@@ -520,7 +736,7 @@ fun NowPlayingFullScreenSheet(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "Lyrics",
+                                    text = if (track.syncedLyrics.isNotEmpty() || track.lyrics.isNotEmpty()) "Lyrics (Live)" else "Lyrics",
                                     fontSize = 13.5.sp,
                                     fontFamily = CircularFontFamily,
                                     fontWeight = FontWeight.Bold,
@@ -537,20 +753,56 @@ fun NowPlayingFullScreenSheet(
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            val previewStart = (activeLyricIndex - 1).coerceAtLeast(0)
+                            val previewStart = if (activeLyricIndex >= 0) {
+                                (activeLyricIndex - 1).coerceAtLeast(0)
+                            } else {
+                                0
+                            }
                             val previewSlice = lyricsLines.drop(previewStart).take(3)
 
                             previewSlice.forEachIndexed { i, line ->
-                                val isHighlighted = (previewStart + i) == activeLyricIndex
+                                val lineIndex = previewStart + i
+                                val isHighlighted = track.syncedLyrics.isNotEmpty() &&
+                                    activeLyricIndex >= 0 &&
+                                    lineIndex == activeLyricIndex
                                 Text(
                                     text = line,
-                                    fontSize = 15.sp,
+                                    fontSize = if (isHighlighted) 16.sp else 14.5.sp,
                                     fontFamily = CircularFontFamily,
                                     fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Normal,
                                     color = if (isHighlighted) RogTextGold else RogTextMuted,
                                     modifier = Modifier.padding(vertical = 2.dp)
                                 )
                             }
+                        }
+                    }
+                } else if (isPlaying || isBuffering) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(28.dp))
+                            .background(RogSurfaceDark)
+                            .clickable { showFullLyrics = true }
+                            .padding(18.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Lyrics",
+                                fontSize = 13.5.sp,
+                                fontFamily = CircularFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = RogTextPrimary
+                            )
+                            Text(
+                                text = if (isFindingLyrics) "Finding lyrics..." else "No lyrics available",
+                                fontSize = 12.sp,
+                                fontFamily = CircularFontFamily,
+                                color = if (isFindingLyrics) RogTextGold else RogTextMuted
+                            )
                         }
                     }
                 }

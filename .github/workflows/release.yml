@@ -20,24 +20,32 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Koi ${{ github.ref_name }} - Initial Release 🎏
+          name: Koi ${{ github.ref_name }} 🎏
           tag_name: ${{ github.ref_name }}
-          files: releases/Koi-v1.0.0.apk
+          files: releases/Koi-${{ github.ref_name }}.apk
           body: |
-            ## Koi ${{ github.ref_name }} - Initial Release 🎏
+            ## Koi ${{ github.ref_name }} 🎏
 
-            Welcome to **Koi**, a high-fidelity music streaming app built with Kotlin Jetpack Compose and Material 3 design tokens.
+            ### 🔍 Complete Search Menu Rework (Spotify & YouTube Music Style)
+            * **Multi-category Search**: Search across Songs, Playlists, Albums, and Artist Profiles.
+            * **Filter Chips**: Instant filtering by **All**, **Songs**, **Artists**, and **Playlists**.
+            * **Top Result Card**: Prominent Spotify-style hero card for top matching artists, tracks, and playlists.
+            * **Full Artist Profile Page**:
+              - Hero header with high-resolution artist banner, listener metrics, and verified badge.
+              - One-tap "Play" (starts top tracks) and "Follow/Following" toggle with persistence.
+              - Popular / Top Songs with ranking, duration, playback wave, and quick actions.
+              - Discography sections: Albums, Singles & EPs, and Featured-on playlists.
+              - Fans Also Like / Similar Artists carousel with smooth profile-to-profile navigation.
+              - Detailed Artist Biography / About section with listener stats.
+            * **Recent Searches Enhancement**: Seamlessly stores and opens tracks, queries, artists, and playlists.
 
-            ### ✨ Added Features
-            * **Full-fidelity Streaming**: Millions of songs, albums, and curated playlists powered by InnerTube.
-            * **Now Playing Player**: Full-screen player sheet with synchronized lyrics, scrubber, and floating mini-player.
-            * **8D Audio & Spatial Studio**: Real-time 8D audio spatializer with custom presets (Lo-Fi, Synthwave, Deep Focus, Nightcore).
-            * **10-Band Equalizer**: Dynamic frequency sculpting with multiple acoustic presets.
-            * **Offline Audio Downloader**: High-quality M4A/MP3 downloading with background caching.
-            * **Playlist & Library Management**: Custom playlists, Liked Songs library, and search history.
-            * **In-App Background Update Checker**: Automatic background checks on launch with update details, release changelogs, and one-tap in-app updating.
+            ### 🎙️ Lyrics Systems Rework & Fixes
+            * **Multi-Source Fallback Chain**: InnerTube official timed lyrics, LRCLIB synced lyrics, Megalobiz LRC, and lrcmux engine.
+            * **Accurate Title Matching**: Strict song title and artist fuzzy matching to prevent returning wrong lyrics for artists with overlapping titles.
+            * **SEO & Metadata Stripping**: Automatic removal of singer credits, copyright disclaimers, and SEO metadata from lyrics streams.
+            * **Live Dynamic Timing**: Smarter timing distribution for tracks without synced timestamps to cover full song duration.
+            * **Lyrics Cache Auto-Migration**: Automatic cache invalidation ensures previous corrupted or mismatched lyrics are refreshed.
 
-            ### 🐛 Bug Fixes & Stability
-            * Android 13+ background media session notification controls.
-            * Elevated manage mode playlist removal bar.
-            * Smooth audio DSP filter transitions and battery optimization handling.
+            ### 🚀 Performance & UI Improvements
+            * Online playlists and albums now stream and load tracks instantly on open.
+            * Refined back-stack navigation handling nested artist and album transitions smoothly.

@@ -49,3 +49,68 @@ data class PlaylistResult(
     val thumbnailUrl: String? = null,
     val tracks: List<SongItem> = emptyList()
 )
+
+data class ArtistItem(
+    val id: String,
+    val name: String,
+    val subscribersOrAudience: String? = null,
+    val thumbnailUrl: String? = null
+)
+
+data class PlaylistItem(
+    val id: String,
+    val title: String,
+    val author: String? = null,
+    val songCount: String? = null,
+    val thumbnailUrl: String? = null,
+    val isAlbum: Boolean = false
+)
+
+data class ArtistAlbumItem(
+    val id: String,
+    val title: String,
+    val year: String? = null,
+    val type: String = "Album",
+    val thumbnailUrl: String? = null
+)
+
+data class ArtistProfile(
+    val id: String,
+    val name: String,
+    val description: String? = null,
+    val subscriberCount: String? = null,
+    val monthlyAudience: String? = null,
+    val headerThumbnailUrl: String? = null,
+    val avatarThumbnailUrl: String? = null,
+    val topSongs: List<SongItem> = emptyList(),
+    val albums: List<ArtistAlbumItem> = emptyList(),
+    val singles: List<ArtistAlbumItem> = emptyList(),
+    val featuredIn: List<PlaylistItem> = emptyList(),
+    val similarArtists: List<ArtistItem> = emptyList(),
+    val bio: String? = null
+)
+
+enum class SearchFilterType(val label: String) {
+    ALL("All"),
+    SONGS("Songs"),
+    ARTISTS("Artists"),
+    PLAYLISTS("Playlists")
+}
+
+data class SearchTopResult(
+    val type: String, // "ARTIST", "SONG", "PLAYLIST", "ALBUM"
+    val id: String,
+    val title: String,
+    val subtitle: String? = null,
+    val thumbnailUrl: String? = null,
+    val songItem: SongItem? = null,
+    val artistItem: ArtistItem? = null,
+    val playlistItem: PlaylistItem? = null
+)
+
+data class ComprehensiveSearchResult(
+    val topResult: SearchTopResult? = null,
+    val songs: List<SongItem> = emptyList(),
+    val artists: List<ArtistItem> = emptyList(),
+    val playlists: List<PlaylistItem> = emptyList()
+)

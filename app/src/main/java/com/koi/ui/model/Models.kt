@@ -109,7 +109,9 @@ enum class NavigationTab(val label: String) {
 
 enum class SearchHistoryType {
     TRACK,
-    QUERY
+    QUERY,
+    ARTIST,
+    PLAYLIST
 }
 
 data class SearchHistoryEntry(
@@ -117,6 +119,8 @@ data class SearchHistoryEntry(
     val type: SearchHistoryType,
     val track: Track? = null,
     val query: String? = null,
+    val artist: com.koi.backend.innertube.ArtistItem? = null,
+    val playlist: com.koi.backend.innertube.PlaylistItem? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
 

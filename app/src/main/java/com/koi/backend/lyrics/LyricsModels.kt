@@ -1,12 +1,13 @@
 package com.koi.backend.lyrics
 
 data class LyricLine(
-    val timeMs: Long?,
+    val timeMs: Long? = null,
     val text: String
 )
 
 data class Lyrics(
-    val source: String,
+    val videoId: String = "",
+    val source: String = "unknown",
     val synced: Boolean,
     val lines: List<LyricLine>
 )

@@ -12,6 +12,7 @@ intermediates/
 
 # Built application packages
 *.apk
+!releases/*.apk
 *.aar
 *.ap_
 *.aab

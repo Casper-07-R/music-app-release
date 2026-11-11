@@ -8,8 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.koi.KoiApplication
 import com.koi.backend.audio.*
 import com.koi.backend.download.*
-import com.koi.backend.innertube.InnerTubeClient
-import com.koi.backend.innertube.SongItem
+import com.koi.backend.innertube.*
 import com.koi.backend.profile.UserProfileManager
 import com.koi.backend.update.AppUpdateManager
 import com.koi.backend.update.GitHubAsset
@@ -71,6 +70,14 @@ data class PlaybackUiState(
     val libraryPlaylists: List<Playlist> = emptyList(),
     val searchQuery: String = "",
     val searchResults: List<Track> = emptyList(),
+    val searchFilter: SearchFilterType = SearchFilterType.ALL,
+    val comprehensiveSearchResult: ComprehensiveSearchResult = ComprehensiveSearchResult(),
+    val artistFilterResults: List<ArtistItem> = emptyList(),
+    val playlistFilterResults: List<PlaylistItem> = emptyList(),
+    val currentArtistProfile: ArtistProfile? = null,
+    val isLoadingArtistProfile: Boolean = false,
+    val artistStack: List<String> = emptyList(),
+    val followedArtistIds: Set<String> = emptySet(),
     val searchHistory: List<SearchHistoryEntry> = emptyList(),
     val isSearching: Boolean = false,
     val showCreatePlaylistDialog: Boolean = false,
@@ -78,6 +85,7 @@ data class PlaybackUiState(
     val isDownloaded: Boolean = false,
     val showEightDStudioSheet: Boolean = false,
     val showProfileSelectorSheet: Boolean = false,
+    val isFindingLyrics: Boolean = false,
     val sleepTimerRemainingSeconds: Int = 0,
     val soundStations: List<SoundStation> = emptyList(),
     val discoveryFeed: List<Track> = emptyList(),
@@ -114,6 +122,7 @@ class PlaybackViewModel : ViewModel() {
     private val playerEngine = app.playerEngine
     private val innerTube = app.innerTube
     private val database = app.database
+    private val lyricsProvider = app.lyricsProvider
     private val downloaderEngine = DownloaderEngine(app, innerTube, database)
 
     private val defaultTrack = Track(
@@ -232,6 +241,10 @@ class PlaybackViewModel : ViewModel() {
         playerEngine.applyDspConfig(_dspConfig.value)
         prefs.edit().putString("last_dsp_config", _dspConfig.value.toJson()).apply()
         loadSearchHistory()
+        viewModelScope.launch(Dispatchers.IO) {
+            val followed = database.getFollowedArtistIds()
+            _uiState.update { it.copy(followedArtistIds = followed) }
+        }
 
         // Collect PlayerEngine states
         viewModelScope.launch {
@@ -239,13 +252,24 @@ class PlaybackViewModel : ViewModel() {
                 if (song != null) {
                     val isLiked = database.isLiked(song.videoId)
                     val isDownloaded = database.isDownloaded(song.videoId)
-                    val lyrics = playerEngine.currentLyrics.value
-                    _uiState.update {
-                        it.copy(
+                    val cached = database.getCachedLyrics(song.videoId)
+                    val currentLyrics = if (cached != null) {
+                        cached.copy(videoId = song.videoId)
+                    } else {
+                        playerEngine.currentLyrics.value
+                    }
+                    val matchingLyrics = if (currentLyrics?.videoId == song.videoId) {
+                        lyricsProvider.ensureLiveLyrics(currentLyrics, song.durationSeconds)
+                    } else null
+                    _uiState.update { state ->
+                        state.copy(
                             currentTrack = Track.fromSongItem(
                                 item = song,
                                 isLiked = isLiked,
-                                syncedLyrics = lyrics?.lines ?: emptyList()
+                                isDownloaded = isDownloaded,
+                                syncedLyrics = matchingLyrics?.lines ?: emptyList()
+                            ).copy(
+                                lyrics = matchingLyrics?.lines?.map { it.text } ?: emptyList()
                             ),
                             isDownloaded = isDownloaded
                         )
@@ -263,15 +287,25 @@ class PlaybackViewModel : ViewModel() {
 
         viewModelScope.launch {
             playerEngine.currentLyrics.collect { lyrics ->
-                val track = _uiState.value.currentTrack
-                if (lyrics != null && lyrics.lines.isNotEmpty()) {
-                    _uiState.update {
-                        it.copy(
-                            currentTrack = track.copy(
-                                lyrics = lyrics.lines.map { line -> line.text },
-                                syncedLyrics = lyrics.lines
+                _uiState.update { state ->
+                    val curTrack = state.currentTrack
+                    if (lyrics != null && (lyrics.videoId.isEmpty() || lyrics.videoId == curTrack.id)) {
+                        val liveLyrics = lyricsProvider.ensureLiveLyrics(lyrics, curTrack.durationSeconds)
+                        state.copy(
+                            currentTrack = curTrack.copy(
+                                lyrics = liveLyrics.lines.map { line -> line.text },
+                                syncedLyrics = liveLyrics.lines
                             )
                         )
+                    } else if (lyrics == null) {
+                        state.copy(
+                            currentTrack = curTrack.copy(
+                                lyrics = emptyList(),
+                                syncedLyrics = emptyList()
+                            )
+                        )
+                    } else {
+                        state
                     }
                 }
             }
@@ -315,6 +349,12 @@ class PlaybackViewModel : ViewModel() {
         viewModelScope.launch {
             playerEngine.isRepeat.collect { repeat ->
                 _uiState.update { it.copy(isRepeatActive = repeat) }
+            }
+        }
+
+        viewModelScope.launch {
+            playerEngine.isFindingLyrics.collect { finding ->
+                _uiState.update { it.copy(isFindingLyrics = finding) }
             }
         }
 
@@ -574,16 +614,173 @@ class PlaybackViewModel : ViewModel() {
         searchJob?.cancel()
 
         if (query.trim().isEmpty()) {
-            _uiState.update { it.copy(searchResults = emptyList(), isSearching = false) }
+            _uiState.update {
+                it.copy(
+                    searchResults = emptyList(),
+                    comprehensiveSearchResult = ComprehensiveSearchResult(),
+                    artistFilterResults = emptyList(),
+                    playlistFilterResults = emptyList(),
+                    isSearching = false
+                )
+            }
             return
         }
 
         searchJob = viewModelScope.launch {
-            delay(400) // debounce
+            delay(350) // debounce
             _uiState.update { it.copy(isSearching = true) }
-            val songs = innerTube.searchSongs(query)
-            val tracks = songs.map { it.toTrack(database.isLiked(it.videoId)) }
-            _uiState.update { it.copy(searchResults = tracks, isSearching = false) }
+            when (_uiState.value.searchFilter) {
+                SearchFilterType.ALL -> {
+                    val comp = innerTube.searchComprehensive(query)
+                    val tracks = comp.songs.map { it.toTrack(database.isLiked(it.videoId)) }
+                    _uiState.update {
+                        it.copy(
+                            comprehensiveSearchResult = comp,
+                            searchResults = tracks,
+                            isSearching = false
+                        )
+                    }
+                }
+                SearchFilterType.SONGS -> {
+                    val songs = innerTube.searchSongs(query)
+                    val tracks = songs.map { it.toTrack(database.isLiked(it.videoId)) }
+                    _uiState.update {
+                        it.copy(
+                            searchResults = tracks,
+                            isSearching = false
+                        )
+                    }
+                }
+                SearchFilterType.ARTISTS -> {
+                    val artists = innerTube.searchArtists(query)
+                    _uiState.update {
+                        it.copy(
+                            artistFilterResults = artists,
+                            isSearching = false
+                        )
+                    }
+                }
+                SearchFilterType.PLAYLISTS -> {
+                    val playlists = innerTube.searchPlaylists(query)
+                    _uiState.update {
+                        it.copy(
+                            playlistFilterResults = playlists,
+                            isSearching = false
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun setSearchFilter(filter: SearchFilterType) {
+        _uiState.update { it.copy(searchFilter = filter) }
+        val query = _uiState.value.searchQuery
+        if (query.trim().isNotEmpty()) {
+            onSearchQueryChanged(query)
+        }
+    }
+
+    fun openArtistProfile(artistId: String) {
+        val currentStack = _uiState.value.artistStack
+        _uiState.update {
+            it.copy(
+                artistStack = currentStack + artistId,
+                isLoadingArtistProfile = true,
+                showSettingsScreen = false
+            )
+        }
+        viewModelScope.launch {
+            val profile = innerTube.getArtistProfile(artistId)
+            _uiState.update {
+                it.copy(
+                    currentArtistProfile = profile,
+                    isLoadingArtistProfile = false
+                )
+            }
+        }
+    }
+
+    fun popArtistProfile() {
+        val currentStack = _uiState.value.artistStack
+        if (currentStack.size > 1) {
+            val newStack = currentStack.dropLast(1)
+            val prevId = newStack.last()
+            _uiState.update {
+                it.copy(
+                    artistStack = newStack,
+                    isLoadingArtistProfile = true
+                )
+            }
+            viewModelScope.launch {
+                val profile = innerTube.getArtistProfile(prevId)
+                _uiState.update {
+                    it.copy(
+                        currentArtistProfile = profile,
+                        isLoadingArtistProfile = false
+                    )
+                }
+            }
+        } else {
+            _uiState.update {
+                it.copy(
+                    artistStack = emptyList(),
+                    currentArtistProfile = null,
+                    isLoadingArtistProfile = false
+                )
+            }
+        }
+    }
+
+    fun toggleFollowArtist(artistId: String, name: String = "", thumbnailUrl: String? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.toggleFollowArtist(artistId, name, thumbnailUrl)
+            val updated = database.getFollowedArtistIds()
+            _uiState.update { it.copy(followedArtistIds = updated) }
+        }
+    }
+
+    fun playArtistTopSongs(songs: List<SongItem>, startIndex: Int = 0) {
+        if (songs.isEmpty()) return
+        val tracks = songs.map { it.toTrack(database.isLiked(it.videoId)) }
+        val startTrack = tracks.getOrElse(startIndex) { tracks.first() }
+        playTrack(startTrack, tracks)
+    }
+
+    fun openSearchPlaylist(item: PlaylistItem) {
+        addPlaylistToSearchHistory(item)
+        val playlist = Playlist(
+            id = item.id,
+            title = item.title,
+            description = item.author ?: "",
+            creator = item.author ?: "YouTube Music",
+            thumbnailUrl = item.thumbnailUrl
+        )
+        openPlaylist(playlist)
+    }
+
+    fun openAlbum(item: ArtistAlbumItem, artistName: String) {
+        val playlist = Playlist(
+            id = item.id,
+            title = item.title,
+            description = item.year ?: "",
+            creator = artistName,
+            thumbnailUrl = item.thumbnailUrl
+        )
+        openPlaylist(playlist)
+    }
+
+    fun addArtistToSearchHistory(artist: ArtistItem) {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.saveSearchHistoryArtist(artist)
+            loadSearchHistory()
+        }
+    }
+
+    fun addPlaylistToSearchHistory(playlist: PlaylistItem) {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.saveSearchHistoryPlaylist(playlist)
+            loadSearchHistory()
         }
     }
 
@@ -607,6 +804,24 @@ class PlaybackViewModel : ViewModel() {
                             id = record.id,
                             type = SearchHistoryType.QUERY,
                             query = q,
+                            timestamp = record.timestamp
+                        )
+                    }
+                    "ARTIST" -> {
+                        val artist = record.artistItem ?: return@mapNotNull null
+                        SearchHistoryEntry(
+                            id = record.id,
+                            type = SearchHistoryType.ARTIST,
+                            artist = artist,
+                            timestamp = record.timestamp
+                        )
+                    }
+                    "PLAYLIST" -> {
+                        val playlist = record.playlistItem ?: return@mapNotNull null
+                        SearchHistoryEntry(
+                            id = record.id,
+                            type = SearchHistoryType.PLAYLIST,
+                            playlist = playlist,
                             timestamp = record.timestamp
                         )
                     }
@@ -943,6 +1158,29 @@ class PlaybackViewModel : ViewModel() {
                     ),
                     showSettingsScreen = false
                 )
+            }
+
+            if (tracks.isEmpty() && (playlist.id.startsWith("VL") || playlist.id.startsWith("MPRE") || playlist.id.startsWith("PL") || playlist.id.startsWith("RD") || playlist.id.startsWith("OLAK"))) {
+                viewModelScope.launch {
+                    val result = innerTube.getPlaylist(playlist.id)
+                    val onlineTracks = result.tracks.map { it.toTrack(database.isLiked(it.videoId)) }
+                    if (_uiState.value.selectedPlaylist?.id == playlist.id) {
+                        _uiState.update {
+                            it.copy(
+                                selectedPlaylist = it.selectedPlaylist?.let { cur ->
+                                    cur.copy(
+                                        title = if (cur.title.isNotBlank()) cur.title else result.title,
+                                        description = if (result.description.isNullOrBlank()) cur.description else result.description,
+                                        creator = result.subtitle ?: cur.creator,
+                                        thumbnailUrl = cur.thumbnailUrl ?: result.thumbnailUrl,
+                                        tracks = onlineTracks,
+                                        trackCount = onlineTracks.size
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
     }

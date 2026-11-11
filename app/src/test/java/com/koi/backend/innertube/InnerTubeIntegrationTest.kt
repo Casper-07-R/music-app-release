@@ -51,4 +51,45 @@ class InnerTubeIntegrationTest {
         assertEquals("Streaming OkHttp client must have 0 read timeout for continuous buffering", 0, client.streamingOkHttpClient.readTimeoutMillis)
         assertTrue(client.streamingOkHttpClient.retryOnConnectionFailure)
     }
+
+    @Test
+    fun testSearchComprehensive() = runBlocking {
+        val result = client.searchComprehensive("The Weeknd")
+        assertNotNull("Search result should not be null", result)
+        assertNotNull("Top result should be found", result.topResult)
+        assertTrue("Artists should not be empty", result.artists.isNotEmpty())
+        assertTrue("Songs should not be empty", result.songs.isNotEmpty())
+        val firstArtist = result.artists.first()
+        assertTrue("Artist id should start with UC", firstArtist.id.startsWith("UC"))
+        assertTrue("Artist name should be non-empty", firstArtist.name.isNotBlank())
+    }
+
+    @Test
+    fun testSearchArtists() = runBlocking {
+        val artists = client.searchArtists("Taylor Swift")
+        assertTrue("Should return artists", artists.isNotEmpty())
+        val first = artists.first()
+        assertTrue("Artist name should contain Taylor Swift", first.name.contains("Taylor Swift", ignoreCase = true))
+        assertTrue("Artist id should start with UC", first.id.startsWith("UC"))
+    }
+
+    @Test
+    fun testSearchPlaylists() = runBlocking {
+        val playlists = client.searchPlaylists("Lofi hip hop")
+        assertTrue("Should return playlists", playlists.isNotEmpty())
+        val first = playlists.first()
+        assertTrue("Playlist id should not be empty", first.id.isNotBlank())
+        assertTrue("Playlist title should not be empty", first.title.isNotBlank())
+    }
+
+    @Test
+    fun testGetArtistProfile() = runBlocking {
+        val profile = client.getArtistProfile("UClYV6hHlupm_S_ObS1W-DYw")
+        assertNotNull("Artist profile should be loaded", profile)
+        assertEquals("The Weeknd", profile!!.name)
+        assertTrue("Top songs should not be empty", profile.topSongs.isNotEmpty())
+        assertTrue("Albums should not be empty", profile.albums.isNotEmpty())
+        assertTrue("Similar artists should not be empty", profile.similarArtists.isNotEmpty())
+        assertNotNull("Bio or description should be present", profile.bio ?: profile.description)
+    }
 }

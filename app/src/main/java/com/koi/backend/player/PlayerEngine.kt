@@ -129,7 +129,19 @@ class PlayerEngine(
             _currentPositionMs.value = posMs
             _queue.value = queueList
             _queueIndex.value = queueIndex
+            val cachedLyrics = database.getCachedLyrics(song.videoId)
+            if (cachedLyrics != null) {
+                _currentLyrics.value = lyricsProvider.ensureLiveLyrics(cachedLyrics.copy(videoId = song.videoId), song.durationSeconds)
+                _isFindingLyrics.value = false
+            } else {
+                _isFindingLyrics.value = true
+            }
             Log.d(TAG, "Restored last playback state: ${song.title} at ${posMs}ms (queue size ${queueList.size})")
+
+            lyricsJob?.cancel()
+            lyricsJob = scope.launch(Dispatchers.IO) {
+                fetchLyrics(song)
+            }
             return true
         } catch (e: Exception) {
             Log.w(TAG, "Failed to restore playback state", e)
@@ -274,6 +286,9 @@ class PlayerEngine(
     private val _currentLyrics = MutableStateFlow<Lyrics?>(null)
     val currentLyrics: StateFlow<Lyrics?> = _currentLyrics.asStateFlow()
 
+    private val _isFindingLyrics = MutableStateFlow(false)
+    val isFindingLyrics: StateFlow<Boolean> = _isFindingLyrics.asStateFlow()
+
     private val _queue = MutableStateFlow<List<SongItem>>(emptyList())
     val queue: StateFlow<List<SongItem>> = _queue.asStateFlow()
 
@@ -288,6 +303,7 @@ class PlayerEngine(
 
     private var progressJob: Job? = null
     private var resolveJob: Job? = null
+    private var lyricsJob: Job? = null
     private var prefetchJob: Job? = null
     private var recommendationsJob: Job? = null
     private var bufferingWatchdogJob: Job? = null
@@ -467,18 +483,44 @@ class PlayerEngine(
         val q = _queue.value
         if (q.size <= 1) return
 
-        val nextIndex = if (_isShuffle.value) {
-            -1
-        } else {
-            (_queueIndex.value + 1) % q.size
+        val currentIndex = _queueIndex.value
+        val upcomingSongs = mutableListOf<SongItem>()
+        for (step in 1..3) {
+            val idx = (currentIndex + step) % q.size
+            if (idx != currentIndex && idx in q.indices) {
+                upcomingSongs.add(q[idx])
+            }
         }
-        if (nextIndex < 0 || nextIndex >= q.size) return
-        val nextSong = q[nextIndex]
+        if (upcomingSongs.isEmpty()) return
 
         prefetchJob = scope.launch(Dispatchers.IO) {
-            delay(5000)
+            // Immediately pre-fetch lyrics for upcoming queue items
+            for (nextSong in upcomingSongs) {
+                if (!isActive) break
+                if (database.getCachedLyrics(nextSong.videoId) == null) {
+                    try {
+                        val preLyrics = lyricsProvider.getLyrics(
+                            title = nextSong.title,
+                            artist = nextSong.artists,
+                            album = nextSong.album,
+                            durationSeconds = nextSong.durationSeconds,
+                            videoId = nextSong.videoId
+                        )
+                        if (preLyrics != null) {
+                            val toCache = lyricsProvider.ensureLiveLyrics(preLyrics.copy(videoId = nextSong.videoId), nextSong.durationSeconds)
+                            database.cacheLyrics(nextSong.videoId, toCache)
+                            Log.d(TAG, "Prefetched lyrics for upcoming song: ${nextSong.title}")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to prefetch lyrics for ${nextSong.title}", e)
+                    }
+                }
+            }
+
+            delay(2000)
             if (!isActive) return@launch
 
+            val nextSong = upcomingSongs.firstOrNull() ?: return@launch
             val localPath = database.getDownloadedFilePath(nextSong.videoId)
             val isLocalDownloaded = (localPath != null && java.io.File(localPath).exists()) ||
                 java.io.File(context.filesDir, "downloads/${nextSong.videoId}.m4a").exists() ||
@@ -499,6 +541,7 @@ class PlayerEngine(
 
     fun playTrack(song: SongItem, newQueue: List<SongItem> = emptyList(), startPositionMs: Long = 0L) {
         resolveJob?.cancel()
+        lyricsJob?.cancel()
         recommendationsJob?.cancel()
 
         // Immediately pause previous audio without clearing timeline so the notification remains persistent
@@ -542,8 +585,17 @@ class PlayerEngine(
             }
         }
 
+        // Immediately check local cache synchronously on track start for instant 0ms lyric update
+        val cached = database.getCachedLyrics(song.videoId)
+        if (cached != null) {
+            _currentLyrics.value = lyricsProvider.ensureLiveLyrics(cached.copy(videoId = song.videoId), song.durationSeconds)
+            _isFindingLyrics.value = false
+        } else {
+            _currentLyrics.value = null
+            _isFindingLyrics.value = true
+        }
+
         _currentTrack.value = song
-        _currentLyrics.value = null
         _currentPositionMs.value = startPositionMs
         _isBuffering.value = true
 
@@ -554,6 +606,11 @@ class PlayerEngine(
 
         // Ensure background playback foreground service is running
         ensurePlaybackServiceStarted()
+
+        // Immediately fetch lyrics in parallel (do not wait for stream resolution)
+        lyricsJob = scope.launch(Dispatchers.IO) {
+            fetchLyrics(song)
+        }
 
         // Record play in history
         scope.launch(Dispatchers.IO) {
@@ -603,7 +660,6 @@ class PlayerEngine(
                     exoPlayer.play()
 
                     if (isActive) {
-                        launch(Dispatchers.IO) { fetchLyrics(song) }
                         recommendationsJob = launch(Dispatchers.IO) { fetchQueueRecommendations(song.videoId) }
                         schedulePrefetchNextTrack()
                     }
@@ -675,10 +731,6 @@ class PlayerEngine(
 
             if (!isActive) return@launch
 
-            // Concurrently fetch lyrics & queue recommendations
-            launch(Dispatchers.IO) {
-                fetchLyrics(song)
-            }
             recommendationsJob = launch(Dispatchers.IO) {
                 fetchQueueRecommendations(song.videoId)
             }
@@ -688,29 +740,55 @@ class PlayerEngine(
 
     private suspend fun fetchLyrics(song: SongItem) {
         try {
+            if (!currentCoroutineContext().isActive || _currentTrack.value?.videoId != song.videoId) return
+
             // 1. Check local cache
             val cached = database.getCachedLyrics(song.videoId)
             if (cached != null) {
-                _currentLyrics.value = cached
+                if (currentCoroutineContext().isActive && _currentTrack.value?.videoId == song.videoId) {
+                    _currentLyrics.value = lyricsProvider.ensureLiveLyrics(cached.copy(videoId = song.videoId), song.durationSeconds)
+                    _isFindingLyrics.value = false
+                }
                 return
             }
 
-            // 2. Fetch from LRCLIB
+            _isFindingLyrics.value = true
+
+            // 2. Fetch from high-speed multi-source provider with progressive updates
             val lyrics = lyricsProvider.getLyrics(
                 title = song.title,
                 artist = song.artists,
                 album = song.album,
-                durationSeconds = song.durationSeconds
+                durationSeconds = song.durationSeconds,
+                videoId = song.videoId,
+                onProgressiveLyrics = { progressiveLyrics ->
+                    if (scope.isActive && _currentTrack.value?.videoId == song.videoId) {
+                        val live = lyricsProvider.ensureLiveLyrics(progressiveLyrics.copy(videoId = song.videoId), song.durationSeconds)
+                        _currentLyrics.value = live
+                        _isFindingLyrics.value = false
+                        // Only lock into persistent cache if this is authentic timestamped LRC
+                        if (progressiveLyrics.synced && progressiveLyrics.lines.any { it.timeMs != null }) {
+                            database.cacheLyrics(song.videoId, live)
+                        }
+                    }
+                }
             )
 
-            if (lyrics != null) {
-                _currentLyrics.value = lyrics
-                database.cacheLyrics(song.videoId, lyrics)
+            if (currentCoroutineContext().isActive && _currentTrack.value?.videoId == song.videoId) {
+                if (lyrics != null) {
+                    val resolvedLyrics = lyricsProvider.ensureLiveLyrics(lyrics.copy(videoId = song.videoId), song.durationSeconds)
+                    _currentLyrics.value = resolvedLyrics
+                    database.cacheLyrics(song.videoId, resolvedLyrics)
+                }
+                _isFindingLyrics.value = false
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "Failed to fetch lyrics for ${song.title}", e)
+            if (currentCoroutineContext().isActive && _currentTrack.value?.videoId == song.videoId) {
+                _isFindingLyrics.value = false
+            }
         }
     }
 
@@ -852,12 +930,12 @@ class PlayerEngine(
                     _durationMs.value = exoPlayer.duration
                 }
                 tick++
-                if (tick % 15 == 0) { // Every ~4.5s persist playback state
+                if (tick % 90 == 0) { // Every ~4.5s persist playback state (90 ticks * 50ms)
                     _currentTrack.value?.let {
                         savePlaybackState(it, pos, _queue.value, _queueIndex.value)
                     }
                 }
-                delay(300)
+                delay(50) // 50ms high-resolution polling for tight, frame-accurate lyric sync
             }
         }
     }
@@ -883,6 +961,7 @@ class PlayerEngine(
     fun release() {
         stopBufferingWatchdog()
         prefetchJob?.cancel()
+        lyricsJob?.cancel()
         releaseLocks()
         scope.cancel()
         exoPlayer.release()

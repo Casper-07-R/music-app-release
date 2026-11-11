@@ -3,6 +3,7 @@ package com.koi.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -149,6 +150,118 @@ fun SearchHistoryItemRow(
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "Search",
+                        fontSize = 12.sp,
+                        fontFamily = CircularFontFamily,
+                        fontWeight = FontWeight.Normal,
+                        color = RogTextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            SearchHistoryType.ARTIST -> {
+                val artist = entry.artist
+                // Artist circular avatar (Spotify/YT Music style circular avatar)
+                Box(
+                    modifier = Modifier
+                        .size(50.dp)
+                        .clip(CircleShape)
+                        .background(RogSurfaceMedium),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (!artist?.thumbnailUrl.isNullOrEmpty()) {
+                        AsyncImage(
+                            model = artist?.thumbnailUrl,
+                            contentDescription = artist?.name,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_profile),
+                            contentDescription = null,
+                            tint = RogTextMuted,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                // Name & "Artist" subtitle
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp)
+                ) {
+                    Text(
+                        text = artist?.name ?: "",
+                        fontSize = 14.5.sp,
+                        fontFamily = CircularFontFamily,
+                        fontWeight = FontWeight.Medium,
+                        color = RogTextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Artist" + if (!artist?.subscribersOrAudience.isNullOrBlank()) " • ${artist?.subscribersOrAudience}" else "",
+                        fontSize = 12.sp,
+                        fontFamily = CircularFontFamily,
+                        fontWeight = FontWeight.Normal,
+                        color = RogTextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            SearchHistoryType.PLAYLIST -> {
+                val playlist = entry.playlist
+                // Playlist square cover
+                Box(
+                    modifier = Modifier
+                        .size(50.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(RogSurfaceMedium),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (!playlist?.thumbnailUrl.isNullOrEmpty()) {
+                        AsyncImage(
+                            model = playlist?.thumbnailUrl,
+                            contentDescription = playlist?.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_library),
+                            contentDescription = null,
+                            tint = RogTextMuted,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                // Title & "Playlist" subtitle
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp)
+                ) {
+                    Text(
+                        text = playlist?.title ?: "",
+                        fontSize = 14.5.sp,
+                        fontFamily = CircularFontFamily,
+                        fontWeight = FontWeight.Medium,
+                        color = RogTextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = (if (playlist?.isAlbum == true) "Album" else "Playlist") + if (!playlist?.author.isNullOrBlank()) " • ${playlist?.author}" else "",
                         fontSize = 12.sp,
                         fontFamily = CircularFontFamily,
                         fontWeight = FontWeight.Normal,
