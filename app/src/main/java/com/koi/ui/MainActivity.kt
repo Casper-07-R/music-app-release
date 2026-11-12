@@ -137,19 +137,19 @@ fun KoiApp(
     BackHandler(enabled = uiState.showEightDStudioSheet) {
         viewModel.closeEightDStudioSheet()
     }
-    BackHandler(enabled = uiState.isFullScreenPlayerExpanded && !uiState.showEightDStudioSheet && !uiState.showEqualizerSheet) {
+    BackHandler(enabled = uiState.isFullScreenPlayerExpanded && !uiState.showEightDStudioSheet && !uiState.showEqualizerSheet && !uiState.showProfileSelectorSheet) {
         viewModel.closeFullScreenPlayer()
     }
-    BackHandler(enabled = uiState.selectedPlaylist != null && !uiState.isFullScreenPlayerExpanded && !uiState.showEightDStudioSheet && !uiState.showEqualizerSheet) {
+    BackHandler(enabled = uiState.selectedPlaylist != null && !uiState.isFullScreenPlayerExpanded && !uiState.showEightDStudioSheet && !uiState.showEqualizerSheet && !uiState.showProfileSelectorSheet) {
         viewModel.closePlaylist()
     }
-    BackHandler(enabled = uiState.showDownloadManager && uiState.selectedPlaylist == null && !uiState.isFullScreenPlayerExpanded && !uiState.showEightDStudioSheet && !uiState.showEqualizerSheet) {
+    BackHandler(enabled = uiState.showDownloadManager && uiState.selectedPlaylist == null && !uiState.isFullScreenPlayerExpanded && !uiState.showEightDStudioSheet && !uiState.showEqualizerSheet && !uiState.showProfileSelectorSheet) {
         viewModel.closeDownloadManager()
     }
-    BackHandler(enabled = uiState.showSettingsScreen && !uiState.isFullScreenPlayerExpanded && !uiState.showEightDStudioSheet && !uiState.showEqualizerSheet) {
+    BackHandler(enabled = uiState.showSettingsScreen && !uiState.isFullScreenPlayerExpanded && !uiState.showEightDStudioSheet && !uiState.showEqualizerSheet && !uiState.showProfileSelectorSheet) {
         viewModel.closeSettings()
     }
-    BackHandler(enabled = uiState.artistStack.isNotEmpty() && uiState.selectedPlaylist == null && !uiState.isFullScreenPlayerExpanded && !uiState.showEightDStudioSheet && !uiState.showEqualizerSheet && !uiState.showSettingsScreen && !uiState.showDownloadManager) {
+    BackHandler(enabled = uiState.artistStack.isNotEmpty() && uiState.selectedPlaylist == null && !uiState.isFullScreenPlayerExpanded && !uiState.showEightDStudioSheet && !uiState.showEqualizerSheet && !uiState.showSettingsScreen && !uiState.showDownloadManager && !uiState.showProfileSelectorSheet) {
         viewModel.popArtistProfile()
     }
 
@@ -170,7 +170,7 @@ fun KoiApp(
                     onBackClick = { viewModel.closeSettings() },
                     onSelectSpatialMode = { viewModel.setSpatialMode(it) },
                     onToggleMasterDsp = { viewModel.toggleMasterDsp() },
-                    onOpenEqualizer = { viewModel.openEqualizerSheet() },
+                    onOpenEqualizer = { viewModel.openEqualizerSheet(fromSettings = true) },
                     onOpenSurroundStudio = { viewModel.openEightDStudioSheet() },
                     onOpenProfileSelector = { viewModel.openProfileSelectorSheet() },
                     onResetProfile = { viewModel.resetProfile(it) },
@@ -188,6 +188,12 @@ fun KoiApp(
             } else if (uiState.selectedPlaylist != null) {
                 val isPlaylistDownloading = uiState.activeDownload.isDownloading && uiState.activeDownload.playlistId == uiState.selectedPlaylist!!.id
                 val isPlaylistDownloaded = uiState.downloadedPlaylistIds.contains(uiState.selectedPlaylist!!.id)
+                val isAddedAsPlaylist = uiState.selectedPlaylist?.let { pl ->
+                    pl.isAlbum && uiState.libraryPlaylists.any { libPl ->
+                        !libPl.isLikedSongs && libPl.title.equals(pl.title, ignoreCase = true) &&
+                            (libPl.thumbnailUrl == pl.thumbnailUrl || libPl.thumbnailUrl.isNullOrEmpty() || pl.thumbnailUrl.isNullOrEmpty())
+                    }
+                } ?: false
                 PlaylistDetailScreen(
                     playlist = uiState.selectedPlaylist!!,
                     currentTrackId = uiState.currentTrack.id,
@@ -212,7 +218,11 @@ fun KoiApp(
                     isPlaylistDownloading = isPlaylistDownloading,
                     downloadProgressFraction = uiState.activeDownload.progressFraction,
                     downloadedTrackIds = uiState.downloadedSongIds,
-                    onDownloadPlaylistClick = { viewModel.requestDownloadPlaylist(uiState.selectedPlaylist!!) }
+                    onDownloadPlaylistClick = { viewModel.requestDownloadPlaylist(uiState.selectedPlaylist!!) },
+                    isAddedAsPlaylist = isAddedAsPlaylist,
+                    onAddAsPlaylistClick = {
+                        uiState.selectedPlaylist?.let { viewModel.addAlbumAsPlaylist(it) }
+                    }
                 )
             } else if (uiState.showDownloadManager) {
                 DownloadManagerScreen(
@@ -453,7 +463,7 @@ fun KoiApp(
                 onPlayPauseClick = { viewModel.togglePlayPause() },
                 onSkipNextClick = { viewModel.skipNext() },
                 onSkipPrevClick = { viewModel.skipPrevious() },
-                onLikeClick = { viewModel.toggleLike() },
+                onEqClick = { viewModel.openEqualizerSheet(fromSettings = false) },
                 onShuffleClick = { viewModel.toggleShuffle() },
                 onRepeatClick = { viewModel.toggleRepeat() },
                 onSeek = { viewModel.seekTo(it) },
@@ -463,6 +473,7 @@ fun KoiApp(
                 isEightDActive = isEightDActive,
                 eightDLabel = eightDLabel,
                 activeProfileName = activeProfileName,
+                isEqActive = dspConfig.eqEnabled,
                 onDownloadClick = { viewModel.toggleDownload(uiState.currentTrack) },
                 onEightDClick = { viewModel.cycleSpatialMode() },
                 onEightDLongClick = { viewModel.openProfileSelectorSheet() },
@@ -518,6 +529,7 @@ fun KoiApp(
             EqualizerProfilesSheet(
                 dspConfig = dspConfig,
                 selectedPreset = uiState.selectedEqPreset,
+                showResetButton = uiState.isEqualizerFromSettings,
                 onSelectPreset = { viewModel.selectEqPreset(it) },
                 onConfigChange = { viewModel.updateDspConfig(it) },
                 onDismiss = { viewModel.closeEqualizerSheet() }

@@ -26,26 +26,19 @@ jobs:
           body: |
             ## Koi ${{ github.ref_name }} 🎏
 
-            ### 🔍 Complete Search Menu Rework (Spotify & YouTube Music Style)
-            * **Multi-category Search**: Search across Songs, Playlists, Albums, and Artist Profiles.
-            * **Filter Chips**: Instant filtering by **All**, **Songs**, **Artists**, and **Playlists**.
-            * **Top Result Card**: Prominent Spotify-style hero card for top matching artists, tracks, and playlists.
-            * **Full Artist Profile Page**:
-              - Hero header with high-resolution artist banner, listener metrics, and verified badge.
-              - One-tap "Play" (starts top tracks) and "Follow/Following" toggle with persistence.
-              - Popular / Top Songs with ranking, duration, playback wave, and quick actions.
-              - Discography sections: Albums, Singles & EPs, and Featured-on playlists.
-              - Fans Also Like / Similar Artists carousel with smooth profile-to-profile navigation.
-              - Detailed Artist Biography / About section with listener stats.
-            * **Recent Searches Enhancement**: Seamlessly stores and opens tracks, queries, artists, and playlists.
+            ### 🎚️ 10-Band Graphic Equalizer (PipeWire bq_peaking from EQ-Clone)
+            * **10-Band Precision Filter Chain**: Peaking biquad EQ chain ported from PipeWire with exact frequencies (31Hz, 63Hz, 125Hz, 250Hz, 500Hz, 1kHz, 2kHz, 4kHz, 8kHz, 16kHz with Q=1.41).
+            * **EQ Presets**: Instant presets for Flat, Bass, Treble, Vocal, Pop, Rock, Jazz, Classic, Nightcore, and Slowed + Reverbed.
+            * **Interactive Fader Sliders**: Studio-grade slider controls with real-time dB gain readouts (-12 dB to +12 dB) and master bypass toggle.
+            * **Player & Settings Integration**: Dedicated Equalizer button in the music player interface; Reset option cleanly organized in Settings.
 
-            ### 🎙️ Lyrics Systems Rework & Fixes
-            * **Multi-Source Fallback Chain**: InnerTube official timed lyrics, LRCLIB synced lyrics, Megalobiz LRC, and lrcmux engine.
-            * **Accurate Title Matching**: Strict song title and artist fuzzy matching to prevent returning wrong lyrics for artists with overlapping titles.
-            * **SEO & Metadata Stripping**: Automatic removal of singer credits, copyright disclaimers, and SEO metadata from lyrics streams.
-            * **Live Dynamic Timing**: Smarter timing distribution for tracks without synced timestamps to cover full song duration.
-            * **Lyrics Cache Auto-Migration**: Automatic cache invalidation ensures previous corrupted or mismatched lyrics are refreshed.
+            ### 🌌 8D & 16D Spatial Audio Harmonization & Stacking
+            * **Seamless Stacking**: Full multi-layer DSP support allowing Equalizer presets and custom curves to stack seamlessly with 8D and 16D spatial panning without state resets.
+            * **Phase-Synced 16D Audio**: Multi-dimensional Lissajous figure-8 orbit ($x = \sin\theta, y = \sin 2\theta$) with front-to-back elevation cueing and seamless horizontal phase synchronization with 8D.
+            * **Expanded Panning Floor**: Lowered minimum audio floor on the opposite ear from 15% to 10% for deeper, richer spatial panning.
+            * **Nightcore & Slowed Re-architecture**: Converted Nightcore and Slowed+Reverbed into pure EQ profiles without forced spatial panning.
 
-            ### 🚀 Performance & UI Improvements
-            * Online playlists and albums now stream and load tracks instantly on open.
+            ### 📱 UX & Interaction Refinements
+            * **Tap-Outside Scrim Dismiss**: Bottom sheets (Equalizer, 8D Studio, Profile Selector, and Sleep Timer) now dismiss instantly when tapping outside.
+            * **Smooth Back-Stack Navigation**: Refined back handlers across all screens and sheets.
             * Refined back-stack navigation handling nested artist and album transitions smoothly.

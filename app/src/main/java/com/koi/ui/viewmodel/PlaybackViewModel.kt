@@ -91,6 +91,7 @@ data class PlaybackUiState(
     val discoveryFeed: List<Track> = emptyList(),
     val showSleepTimerDialog: Boolean = false,
     val showEqualizerSheet: Boolean = false,
+    val isEqualizerFromSettings: Boolean = false,
     val selectedEqPreset: String = "Flat",
     val showSettingsScreen: Boolean = false,
     val showDownloadManager: Boolean = false,
@@ -238,6 +239,7 @@ class PlaybackViewModel : ViewModel() {
 
     init {
         database.clearCustomPresets()
+        _uiState.update { it.copy(selectedEqPreset = _dspConfig.value.eqPreset) }
         playerEngine.applyDspConfig(_dspConfig.value)
         prefs.edit().putString("last_dsp_config", _dspConfig.value.toJson()).apply()
         loadSearchHistory()
@@ -505,7 +507,12 @@ class PlaybackViewModel : ViewModel() {
                     coverGradientStart = Color(0xFFFF6B35),
                     coverGradientEnd = Color(0xFF07181E),
                     creator = "You",
-                    tracks = tracks.map { it.toTrack(database.isLiked(it.videoId)) }
+                    tracks = tracks.map { song ->
+                        val thumb = song.thumbnailUrl?.ifBlank { null }
+                            ?: info.coverUrl?.ifBlank { null }
+                            ?: "https://i.ytimg.com/vi/${song.videoId}/hqdefault.jpg"
+                        song.copy(thumbnailUrl = thumb).toTrack(database.isLiked(song.videoId))
+                    }
                 )
             }
 
@@ -749,12 +756,14 @@ class PlaybackViewModel : ViewModel() {
 
     fun openSearchPlaylist(item: PlaylistItem) {
         addPlaylistToSearchHistory(item)
+        val isAlbum = item.isAlbum || item.id.startsWith("MPRE")
         val playlist = Playlist(
             id = item.id,
             title = item.title,
             description = item.author ?: "",
             creator = item.author ?: "YouTube Music",
-            thumbnailUrl = item.thumbnailUrl
+            thumbnailUrl = item.thumbnailUrl,
+            isAlbum = isAlbum
         )
         openPlaylist(playlist)
     }
@@ -765,7 +774,8 @@ class PlaybackViewModel : ViewModel() {
             title = item.title,
             description = item.year ?: "",
             creator = artistName,
-            thumbnailUrl = item.thumbnailUrl
+            thumbnailUrl = item.thumbnailUrl,
+            isAlbum = true
         )
         openPlaylist(playlist)
     }
@@ -1119,6 +1129,7 @@ class PlaybackViewModel : ViewModel() {
 
     fun openPlaylist(playlist: Playlist) {
         viewModelScope.launch {
+            val isAlbum = playlist.isAlbum || playlist.id.startsWith("MPRE")
             val localInfo = database.getPlaylistInfo(playlist.id)
             val currentTitle = localInfo?.title ?: playlist.title
             val currentDesc = localInfo?.description ?: playlist.description
@@ -1136,13 +1147,25 @@ class PlaybackViewModel : ViewModel() {
             } else {
                 val localTracks = database.getPlaylistTracks(playlist.id)
                 if (localTracks.isNotEmpty()) {
-                    localTracks.map { it.toTrack(database.isLiked(it.videoId)) }
+                    localTracks.map { song ->
+                        val thumb = song.thumbnailUrl?.ifBlank { null }
+                            ?: currentCover?.ifBlank { null }
+                            ?: playlist.thumbnailUrl?.ifBlank { null }
+                            ?: "https://i.ytimg.com/vi/${song.videoId}/hqdefault.jpg"
+                        song.copy(thumbnailUrl = thumb).toTrack(database.isLiked(song.videoId))
+                    }
                 } else {
                     val downloaded = database.getDownloadedPlaylistTracks(playlist.id)
                     if (downloaded.isNotEmpty()) {
                         downloaded.map { it.toTrack(database.isLiked(it.videoId)) }
                     } else {
-                        playlist.tracks
+                        playlist.tracks.map { track ->
+                            val thumb = track.thumbnailUrl?.ifBlank { null }
+                                ?: currentCover?.ifBlank { null }
+                                ?: playlist.thumbnailUrl?.ifBlank { null }
+                                ?: "https://i.ytimg.com/vi/${track.id}/hqdefault.jpg"
+                            track.copy(thumbnailUrl = thumb)
+                        }
                     }
                 }
             }
@@ -1154,7 +1177,8 @@ class PlaybackViewModel : ViewModel() {
                         description = currentDesc,
                         thumbnailUrl = currentCover,
                         tracks = tracks,
-                        trackCount = tracks.size
+                        trackCount = tracks.size,
+                        isAlbum = isAlbum
                     ),
                     showSettingsScreen = false
                 )
@@ -1163,24 +1187,88 @@ class PlaybackViewModel : ViewModel() {
             if (tracks.isEmpty() && (playlist.id.startsWith("VL") || playlist.id.startsWith("MPRE") || playlist.id.startsWith("PL") || playlist.id.startsWith("RD") || playlist.id.startsWith("OLAK"))) {
                 viewModelScope.launch {
                     val result = innerTube.getPlaylist(playlist.id)
-                    val onlineTracks = result.tracks.map { it.toTrack(database.isLiked(it.videoId)) }
+                    val onlineTracks = result.tracks.map { song ->
+                        val thumb = song.thumbnailUrl?.ifBlank { null }
+                            ?: result.thumbnailUrl?.ifBlank { null }
+                            ?: playlist.thumbnailUrl?.ifBlank { null }
+                            ?: "https://i.ytimg.com/vi/${song.videoId}/hqdefault.jpg"
+                        song.copy(thumbnailUrl = thumb).toTrack(database.isLiked(song.videoId))
+                    }
                     if (_uiState.value.selectedPlaylist?.id == playlist.id) {
                         _uiState.update {
                             it.copy(
                                 selectedPlaylist = it.selectedPlaylist?.let { cur ->
+                                    val finalThumb = cur.thumbnailUrl ?: result.thumbnailUrl
                                     cur.copy(
                                         title = if (cur.title.isNotBlank()) cur.title else result.title,
                                         description = if (result.description.isNullOrBlank()) cur.description else result.description,
                                         creator = result.subtitle ?: cur.creator,
-                                        thumbnailUrl = cur.thumbnailUrl ?: result.thumbnailUrl,
+                                        thumbnailUrl = finalThumb,
                                         tracks = onlineTracks,
-                                        trackCount = onlineTracks.size
+                                        trackCount = onlineTracks.size,
+                                        isAlbum = cur.isAlbum || result.isAlbum || cur.id.startsWith("MPRE")
                                     )
                                 }
                             )
                         }
                     }
                 }
+            }
+        }
+    }
+
+    fun addAlbumAsPlaylist(album: Playlist) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val existing = database.getAllPlaylists().find {
+                it.title.equals(album.title, ignoreCase = true) &&
+                    (it.coverUrl == album.thumbnailUrl || it.coverUrl.isNullOrEmpty() || album.thumbnailUrl.isNullOrEmpty())
+            }
+            if (existing != null) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(app, "\"${album.title}\" is already in your playlists", Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+
+            val tracks = if (album.tracks.isNotEmpty()) {
+                album.tracks
+            } else {
+                val result = innerTube.getPlaylist(album.id)
+                result.tracks.map { song ->
+                    val thumb = song.thumbnailUrl?.ifBlank { null }
+                        ?: result.thumbnailUrl?.ifBlank { null }
+                        ?: album.thumbnailUrl?.ifBlank { null }
+                        ?: "https://i.ytimg.com/vi/${song.videoId}/hqdefault.jpg"
+                    song.copy(thumbnailUrl = thumb).toTrack(database.isLiked(song.videoId))
+                }
+            }
+
+            if (tracks.isEmpty()) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(app, "No tracks available to add", Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+
+            val desc = album.description.ifEmpty { "Album by ${album.creator}" }
+            val playlistId = database.createPlaylist(
+                title = album.title,
+                description = desc,
+                coverUrl = album.thumbnailUrl
+            )
+
+            val songItems = tracks.map { track ->
+                val thumb = track.thumbnailUrl?.ifBlank { null }
+                    ?: album.thumbnailUrl?.ifBlank { null }
+                    ?: "https://i.ytimg.com/vi/${track.id}/hqdefault.jpg"
+                track.copy(thumbnailUrl = thumb, album = track.album.ifEmpty { album.title }).toSongItem()
+            }
+            database.addTracksToPlaylist(playlistId, songItems)
+
+            refreshLibrary()
+
+            withContext(Dispatchers.Main) {
+                Toast.makeText(app, "Added \"${album.title}\" to playlists", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -1364,18 +1452,34 @@ class PlaybackViewModel : ViewModel() {
     }
 
     fun setSpatialMode(mode: SpatialMode) {
-        val currentProfile = _dspConfig.value.activeProfile
-        val newConfig = if (mode == SpatialMode.OFF) {
+        val current = _dspConfig.value
+        val currentProfile = current.activeProfile
+        val baseConfig = if (mode == SpatialMode.OFF) {
             AudioDspConfig.createConfig(mode, currentProfile)
         } else {
             getProfileConfig(currentProfile, mode)
         }
+        val newConfig = baseConfig.copy(
+            eqEnabled = current.eqEnabled,
+            eqPreset = current.eqPreset,
+            eqBands = current.eqBands,
+            playbackSpeed = current.playbackSpeed,
+            pitchSemitones = current.pitchSemitones
+        )
         updateDspConfig(newConfig)
     }
 
     fun selectProfile(profile: AudioProfile) {
-        val currentMode = _dspConfig.value.spatialMode
-        val newConfig = getProfileConfig(profile, currentMode)
+        val current = _dspConfig.value
+        val currentMode = current.spatialMode
+        val baseConfig = getProfileConfig(profile, currentMode)
+        val newConfig = baseConfig.copy(
+            eqEnabled = current.eqEnabled,
+            eqPreset = current.eqPreset,
+            eqBands = current.eqBands,
+            playbackSpeed = current.playbackSpeed,
+            pitchSemitones = current.pitchSemitones
+        )
         updateDspConfig(newConfig)
     }
 
@@ -1434,8 +1538,8 @@ class PlaybackViewModel : ViewModel() {
         _uiState.update { it.copy(showEightDStudioSheet = false) }
     }
 
-    fun openEqualizerSheet() {
-        _uiState.update { it.copy(showEqualizerSheet = true) }
+    fun openEqualizerSheet(fromSettings: Boolean = false) {
+        _uiState.update { it.copy(showEqualizerSheet = true, isEqualizerFromSettings = fromSettings) }
     }
 
     fun closeEqualizerSheet() {
@@ -1444,18 +1548,103 @@ class PlaybackViewModel : ViewModel() {
 
     fun selectEqPreset(presetName: String) {
         _uiState.update { it.copy(selectedEqPreset = presetName) }
+        val current = _dspConfig.value
+        val presetBands = EqPresets.PRESETS[presetName] ?: floatArrayOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)
+        val bandList = presetBands.toList()
+
         when (presetName) {
-            "Flat" -> updateDspConfig(_dspConfig.value.copy(bassBoostGainDb = 0f, trebleClarityDb = 0f))
-            "Bass Boost" -> updateDspConfig(_dspConfig.value.copy(bassBoostGainDb = 6.0f, trebleClarityDb = 1.0f, bassBoostEnabled = true))
-            "Bass Reducer" -> updateDspConfig(_dspConfig.value.copy(bassBoostGainDb = 0f, trebleClarityDb = 2.0f, bassBoostEnabled = false))
-            "Vocal Clarity" -> updateDspConfig(_dspConfig.value.copy(bassBoostGainDb = 1.5f, trebleClarityDb = 4.0f))
-            "Treble Boost" -> updateDspConfig(_dspConfig.value.copy(bassBoostGainDb = 1.0f, trebleClarityDb = 5.5f))
-            "Electronic" -> updateDspConfig(_dspConfig.value.copy(bassBoostGainDb = 5.0f, trebleClarityDb = 3.5f))
-            "Rock" -> updateDspConfig(_dspConfig.value.copy(bassBoostGainDb = 4.5f, trebleClarityDb = 3.0f))
-            "Hip-Hop" -> updateDspConfig(_dspConfig.value.copy(bassBoostGainDb = 7.0f, trebleClarityDb = 2.0f))
-            "Acoustic" -> updateDspConfig(_dspConfig.value.copy(bassBoostGainDb = 2.0f, trebleClarityDb = 3.0f))
-            "Jazz" -> updateDspConfig(_dspConfig.value.copy(bassBoostGainDb = 3.0f, trebleClarityDb = 2.5f))
+            "Flat" -> {
+                updateDspConfig(
+                    current.copy(
+                        eqEnabled = false,
+                        eqPreset = "Flat",
+                        eqBands = bandList,
+                        playbackSpeed = 1.0f,
+                        pitchSemitones = 0.0f,
+                        reverbLevel = if (current.is8dEnabled) current.reverbLevel else 0.0f
+                    )
+                )
+            }
+            "Nightcore" -> {
+                // Nightcore EQ profile: accelerated tempo, crisp pitch shift, bright clarity, zero panning
+                updateDspConfig(
+                    current.copy(
+                        eqEnabled = true,
+                        eqPreset = "Nightcore",
+                        eqBands = bandList,
+                        playbackSpeed = 1.25f,
+                        pitchSemitones = 3.5f,
+                        trebleClarityDb = 1.5f,
+                        preGainDb = -2.0f,
+                        roomSize = 0.40f,
+                        reverbLevel = 0.10f,
+                        is8dEnabled = false,
+                        spatialMode = SpatialMode.OFF,
+                        panDepth = 0.0f
+                    )
+                )
+            }
+            "Slowed + Reverbed" -> {
+                // Slowed + Reverbed EQ profile: relaxed tempo, dropped pitch, sub-bass, spacious reverb, zero panning
+                updateDspConfig(
+                    current.copy(
+                        eqEnabled = true,
+                        eqPreset = "Slowed + Reverbed",
+                        eqBands = bandList,
+                        playbackSpeed = 0.85f,
+                        pitchSemitones = -2.5f,
+                        roomSize = 0.74f,
+                        reverbLevel = 0.42f,
+                        bassBoostEnabled = true,
+                        bassBoostFreq = BassBoostFrequency.FREQ_60HZ,
+                        bassBoostGainDb = 2.5f,
+                        trebleClarityDb = 0.5f,
+                        preGainDb = -3.0f,
+                        is8dEnabled = false,
+                        spatialMode = SpatialMode.OFF,
+                        panDepth = 0.0f
+                    )
+                )
+            }
+            else -> {
+                // Presets from EQ-Clone: Bass, Treble, Vocal, Pop, Rock, Jazz, Classic
+                val resetSpeed = if (current.eqPreset == "Nightcore" || current.eqPreset == "Slowed + Reverbed") 1.0f else current.playbackSpeed
+                val resetPitch = if (current.eqPreset == "Nightcore" || current.eqPreset == "Slowed + Reverbed") 0.0f else current.pitchSemitones
+                val resetReverb = if (!current.is8dEnabled && (current.eqPreset == "Nightcore" || current.eqPreset == "Slowed + Reverbed")) 0.0f else current.reverbLevel
+
+                updateDspConfig(
+                    current.copy(
+                        eqEnabled = true,
+                        eqPreset = presetName,
+                        eqBands = bandList,
+                        playbackSpeed = resetSpeed,
+                        pitchSemitones = resetPitch,
+                        reverbLevel = resetReverb
+                    )
+                )
+            }
         }
+    }
+
+    fun setEqBand(bandIndex: Int, gainDb: Float) {
+        val current = _dspConfig.value
+        val bands = current.eqBands.toMutableList()
+        if (bandIndex in 0 until bands.size) {
+            bands[bandIndex] = gainDb.coerceIn(-12f, 12f)
+            _uiState.update { it.copy(selectedEqPreset = "Custom") }
+            updateDspConfig(
+                current.copy(
+                    eqEnabled = true,
+                    eqPreset = "Custom",
+                    eqBands = bands
+                )
+            )
+        }
+    }
+
+    fun toggleEq(enabled: Boolean) {
+        val current = _dspConfig.value
+        updateDspConfig(current.copy(eqEnabled = enabled))
     }
 
     // --- SLEEP TIMER WITH VOLUME FADEOUT ---

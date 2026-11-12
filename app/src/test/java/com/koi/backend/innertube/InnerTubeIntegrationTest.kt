@@ -57,11 +57,37 @@ class InnerTubeIntegrationTest {
         val result = client.searchComprehensive("The Weeknd")
         assertNotNull("Search result should not be null", result)
         assertNotNull("Top result should be found", result.topResult)
+        assertEquals("Top result for The Weeknd should be ARTIST", "ARTIST", result.topResult!!.type)
         assertTrue("Artists should not be empty", result.artists.isNotEmpty())
         assertTrue("Songs should not be empty", result.songs.isNotEmpty())
         val firstArtist = result.artists.first()
         assertTrue("Artist id should start with UC", firstArtist.id.startsWith("UC"))
         assertTrue("Artist name should be non-empty", firstArtist.name.isNotBlank())
+    }
+
+    @Test
+    fun testSearchArtistSaiAbhyankkarDisplaysAsArtist() = runBlocking {
+        val result = client.searchComprehensive("sai abhyankkar")
+        assertNotNull("Search result should not be null", result)
+        assertNotNull("Top result should be found for sai abhyankkar", result.topResult)
+        assertEquals("Top result for sai abhyankkar must be ARTIST, not SONG", "ARTIST", result.topResult!!.type)
+        assertEquals("Top result title should be Sai Abhyankkar", "Sai Abhyankkar", result.topResult!!.title)
+        assertNotNull("artistItem must be populated on ARTIST top result", result.topResult!!.artistItem)
+        assertNull("songItem must be null on ARTIST top result", result.topResult!!.songItem)
+
+        // Verify artists list contains Sai Abhyankkar
+        assertTrue("Artists list should not be empty", result.artists.isNotEmpty())
+        assertTrue(
+            "Artists list should contain Sai Abhyankkar",
+            result.artists.any { it.name.equals("Sai Abhyankkar", ignoreCase = true) }
+        )
+
+        // Verify songs list does not contain a fake song named Sai Abhyankkar
+        assertTrue("Songs should not be empty", result.songs.isNotEmpty())
+        assertFalse(
+            "None of the songs should be named Sai Abhyankkar",
+            result.songs.any { it.title.equals("Sai Abhyankkar", ignoreCase = true) }
+        )
     }
 
     @Test

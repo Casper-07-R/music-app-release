@@ -36,13 +36,16 @@ data class Track(
             isDownloaded: Boolean = false,
             syncedLyrics: List<LyricLine> = emptyList()
         ): Track {
+            val rawThumb = item.thumbnailUrl?.ifBlank { null }
+                ?: if (item.videoId.isNotBlank()) "https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg" else null
+            val thumb = com.koi.backend.innertube.InnerTubeClient.getHighResThumbnailUrl(rawThumb) ?: rawThumb
             return Track(
                 id = item.videoId,
                 title = item.title,
                 artist = item.artists,
                 album = item.album ?: "",
                 durationSeconds = item.durationSeconds,
-                thumbnailUrl = com.koi.backend.innertube.InnerTubeClient.getHighResThumbnailUrl(item.thumbnailUrl) ?: item.thumbnailUrl,
+                thumbnailUrl = thumb,
                 isLiked = isLiked,
                 isDownloaded = isDownloaded,
                 lyrics = syncedLyrics.map { it.text },
@@ -74,7 +77,8 @@ data class Playlist(
     val coverGradientStart: Color = Color(0xFF133642),
     val coverGradientEnd: Color = Color(0xFF07181E),
     val creator: String = "Koi",
-    val tracks: List<Track> = emptyList()
+    val tracks: List<Track> = emptyList(),
+    val isAlbum: Boolean = false
 )
 
 data class GenreCategory(

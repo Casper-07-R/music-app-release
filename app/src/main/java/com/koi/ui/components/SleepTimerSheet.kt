@@ -23,8 +23,11 @@ fun SleepTimerSheet(
     onSetTimer: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
         containerColor = RogSurfaceDark,
         scrimColor = RogObsidian.copy(alpha = 0.7f),

@@ -52,9 +52,11 @@ fun EightDAudioStudioSheet(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
         onDismissRequest = onClose,
+        sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
         containerColor = RogObsidian,
         dragHandle = {

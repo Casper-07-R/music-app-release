@@ -101,9 +101,12 @@ fun TrackListItem(
                 .background(RogSurfaceMedium),
             contentAlignment = Alignment.Center
         ) {
-            if (!track.thumbnailUrl.isNullOrEmpty()) {
+            val thumb = track.thumbnailUrl?.ifBlank { null }
+                ?: if (track.id.isNotBlank()) "https://i.ytimg.com/vi/${track.id}/hqdefault.jpg" else null
+
+            if (!thumb.isNullOrEmpty()) {
                 AsyncImage(
-                    model = track.thumbnailUrl,
+                    model = thumb,
                     contentDescription = track.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()

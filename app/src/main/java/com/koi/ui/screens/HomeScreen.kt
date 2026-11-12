@@ -114,7 +114,6 @@ fun HomeScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(RogSurfaceHighlight)
                                     .clickable { onOpenSleepTimer() }
                                     .padding(horizontal = 8.dp, vertical = 4.dp),
                                 contentAlignment = Alignment.Center
@@ -153,13 +152,12 @@ fun HomeScreen(
                             }
                         }
 
-                        // Download Manager Shortcut (Replaces Search near Settings)
+                        // Download Manager Shortcut (No button background)
                         val isDownloading = uiState.activeDownload.isDownloading
                         Box(
                             modifier = Modifier
                                 .size(34.dp)
                                 .clip(CircleShape)
-                                .background(if (isDownloading) RogSurfaceHighlight else RogSurfaceHighlight.copy(alpha = 0.7f))
                                 .clickable { onOpenDownloadManager() },
                             contentAlignment = Alignment.Center
                         ) {
@@ -171,12 +169,11 @@ fun HomeScreen(
                             )
                         }
 
-                        // Settings Button
+                        // Settings Button (No button background)
                         Box(
                             modifier = Modifier
                                 .size(34.dp)
                                 .clip(CircleShape)
-                                .background(RogSurfaceHighlight)
                                 .clickable { onSettingsClick() },
                             contentAlignment = Alignment.Center
                         ) {
@@ -275,14 +272,15 @@ fun HomeScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Middle: Inline 360° Spatial Audio Segmented Switcher (slightly opaque background)
+                    // Middle: Inline 360° Spatial Audio Segmented Switcher (translucent background)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
                             .background(RogSurfaceMedium.copy(alpha = 0.52f))
                             .padding(3.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         val spatialModes = listOf(
                             SpatialMode.OFF to "STEREO",
@@ -303,7 +301,7 @@ fun HomeScreen(
                             ) {
                                 Text(
                                     text = label,
-                                    fontSize = 11.sp,
+                                    fontSize = 12.sp,
                                     fontFamily = CircularFontFamily,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (isSelected) RogTextGold else RogTextSecondary

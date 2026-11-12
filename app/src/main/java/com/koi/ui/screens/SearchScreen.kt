@@ -226,7 +226,7 @@ fun SearchScreen(
                             contentPadding = PaddingValues(bottom = 140.dp)
                         ) {
                             // 1. Top Result Card
-                            comp?.topResult?.let { top ->
+                            comp?.topResult?.takeIf { !com.koi.backend.innertube.InnerTubeClient.isVideoOrClip(it.title, it.subtitle ?: "") }?.let { top ->
                                 item {
                                     Text(
                                         text = "Top result",
@@ -264,13 +264,14 @@ fun SearchScreen(
                                                         onTrackClick(track, searchResults)
                                                     }
                                                     "PLAYLIST", "ALBUM" -> {
-                                                        val pl = top.playlistItem ?: PlaylistItem(
+                                                        val basePl = top.playlistItem ?: PlaylistItem(
                                                             id = top.id,
                                                             title = top.title,
                                                             author = top.subtitle,
                                                             thumbnailUrl = top.thumbnailUrl,
                                                             isAlbum = top.type == "ALBUM"
                                                         )
+                                                        val pl = if (top.type == "ALBUM") basePl.copy(isAlbum = true) else basePl
                                                         onPlaylistClick(pl)
                                                     }
                                                 }
@@ -342,10 +343,20 @@ fun SearchScreen(
                                                             color = RogTextGold
                                                         )
                                                     }
-                                                    if (!top.subtitle.isNullOrBlank()) {
+                                                    val displaySubtitle = remember(top.subtitle, top.type) {
+                                                        val raw = top.subtitle.orEmpty().trim()
+                                                        when (top.type) {
+                                                            "ARTIST" -> raw.replace(Regex("""^Artist\s*•\s*""", RegexOption.IGNORE_CASE), "")
+                                                            "ALBUM" -> raw.replace(Regex("""^(Album|Single|EP)\s*•\s*""", RegexOption.IGNORE_CASE), "")
+                                                            "PLAYLIST" -> raw.replace(Regex("""^Playlist\s*•\s*""", RegexOption.IGNORE_CASE), "")
+                                                            "SONG" -> raw.replace(Regex("""^(Song|Video)\s*•\s*""", RegexOption.IGNORE_CASE), "")
+                                                            else -> raw
+                                                        }.trim()
+                                                    }
+                                                    if (displaySubtitle.isNotBlank()) {
                                                         Spacer(modifier = Modifier.width(6.dp))
                                                         Text(
-                                                            text = "• ${top.subtitle}",
+                                                            text = "• $displaySubtitle",
                                                             fontSize = 12.5.sp,
                                                             fontFamily = CircularFontFamily,
                                                             color = RogTextSecondary,
@@ -380,7 +391,7 @@ fun SearchScreen(
 
                             // 2. Songs Section (top 4-5)
                             val songList = if (comp != null && comp.songs.isNotEmpty()) {
-                                comp.songs.map { song ->
+                                comp.songs.filter { !com.koi.backend.innertube.InnerTubeClient.isVideoOrClip(it.title, it.artists) }.map { song ->
                                     Track(
                                         id = song.videoId,
                                         title = song.title,
@@ -391,7 +402,7 @@ fun SearchScreen(
                                     )
                                 }
                             } else {
-                                searchResults
+                                searchResults.filter { !com.koi.backend.innertube.InnerTubeClient.isVideoOrClip(it.title, it.artist) }
                             }
 
                             if (songList.isNotEmpty()) {
@@ -613,19 +624,22 @@ fun SearchScreen(
                     }
                 }
                 SearchFilterType.SONGS -> {
-                    if (searchResults.isEmpty() && !isSearching) {
+                    val filteredSongs = remember(searchResults) {
+                        searchResults.filter { !com.koi.backend.innertube.InnerTubeClient.isVideoOrClip(it.title, it.artist) }
+                    }
+                    if (filteredSongs.isEmpty() && !isSearching) {
                         EmptySearchState(query = searchQuery)
                     } else {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(bottom = 140.dp)
                         ) {
-                            itemsIndexed(searchResults) { index, track ->
+                            itemsIndexed(filteredSongs) { index, track ->
                                 TrackListItem(
                                     track = track,
                                     index = index,
                                     isPlayingCurrentTrack = track.id == currentTrackId,
-                                    onTrackClick = { onTrackClick(track, searchResults) },
+                                    onTrackClick = { onTrackClick(track, filteredSongs) },
                                     onLikeClick = { onLikeTrackClick(track) },
                                     onMoreClick = { onMoreTrackClick(track) }
                                 )
@@ -689,8 +703,11 @@ fun SearchScreen(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Spacer(modifier = Modifier.height(2.dp))
+                                        val cleanAudience = remember(artist.subscribersOrAudience) {
+                                            artist.subscribersOrAudience?.replace(Regex("""^Artist\s*•\s*""", RegexOption.IGNORE_CASE), "")?.trim()
+                                        }
                                         Text(
-                                            text = "Artist" + if (!artist.subscribersOrAudience.isNullOrBlank()) " • ${artist.subscribersOrAudience}" else "",
+                                            text = if (!cleanAudience.isNullOrBlank()) "Artist • $cleanAudience" else "Artist",
                                             fontSize = 12.5.sp,
                                             fontFamily = CircularFontFamily,
                                             color = RogTextSecondary,

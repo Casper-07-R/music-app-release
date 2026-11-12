@@ -22,16 +22,6 @@ enum class AudioProfile(
         label = "Surround 360°",
         shortDescription = "Surround sound • Gentle 360° motion",
         fullDescription = "Sit in the sweet spot between all speakers. All-around surround envelopment with gentle, smooth 360° panning motion."
-    ),
-    NIGHTCORE(
-        label = "Nightcore",
-        shortDescription = "1.25x • +3.5 semitones",
-        fullDescription = "Accelerated tempo with crisp harmonic pitch-shift and bright treble clarity for high-energy spatial immersion."
-    ),
-    SLOWED_REVERB(
-        label = "Slowed + Reverbed",
-        shortDescription = "0.85x • Deep & spacious",
-        fullDescription = "Relaxed tempo with dropped pitch, deep warm sub-bass, and lush spacious studio reverberation."
     )
 }
 
@@ -96,7 +86,10 @@ data class AudioDspConfig(
     val pitchSemitones: Float = 0.0f,
     val lockPitchWithSpeed: Boolean = false,
     val activePresetName: String = "Balanced",
-    val perTrackMemoryEnabled: Boolean = false
+    val perTrackMemoryEnabled: Boolean = false,
+    val eqEnabled: Boolean = false,
+    val eqPreset: String = "Flat",
+    val eqBands: List<Float> = listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)
 ) {
     fun toJson(): String = Gson().toJson(this)
 
@@ -107,12 +100,12 @@ data class AudioDspConfig(
         ): AudioDspConfig {
             val isEnabled = spatialMode != SpatialMode.OFF
             val speed = when (spatialMode) {
-                SpatialMode.MODE_16D -> 7.5f
+                SpatialMode.MODE_16D -> 9.0f
                 SpatialMode.MODE_8D -> 13.0f
                 SpatialMode.OFF -> 13.0f
             }
             val depth = when (spatialMode) {
-                SpatialMode.MODE_16D -> 0.88f
+                SpatialMode.MODE_16D -> 0.78f
                 SpatialMode.MODE_8D -> 0.80f
                 SpatialMode.OFF -> 0.80f
             }
@@ -123,7 +116,7 @@ data class AudioDspConfig(
                     activeProfile = profile,
                     is8dEnabled = isEnabled,
                     rotationSpeedSeconds = when (spatialMode) {
-                        SpatialMode.MODE_16D -> 7.5f
+                        SpatialMode.MODE_16D -> 9.0f
                         else -> 11.0f
                     },
                     panDepth = depth,
@@ -200,86 +193,15 @@ data class AudioDspConfig(
                     lockPitchWithSpeed = false,
                     activePresetName = "Surround 360°"
                 )
-
-                AudioProfile.NIGHTCORE -> AudioDspConfig(
-                    spatialMode = spatialMode,
-                    activeProfile = profile,
-                    is8dEnabled = isEnabled,
-                    rotationSpeedSeconds = speed,
-                    panDepth = depth,
-                    crossoverSplitHz = 250,
-                    subBassCentering = true,
-                    rotationPattern = RotationPattern.SINE,
-                    rotationDirection = RotationDirection.CLOCKWISE,
-                    useDualTapEcho = false,
-                    echoTap1Ms = 0f,
-                    echoTap2Ms = 0f,
-                    echoDecay1 = 0f,
-                    echoDecay2 = 0f,
-                    echoInGain = 1.0f,
-                    echoOutGain = 1.0f,
-                    roomSize = 0.40f,
-                    reverbLevel = 0.10f,
-                    binauralHrtf = true,
-                    distanceFrontBackCue = true,
-                    crossfeed = false,
-                    crossfeedAmount = 0.0f,
-                    bassBoostEnabled = false,
-                    cleanBassProtection = true,
-                    limiterEnabled = true,
-                    trebleClarityDb = 1.5f,
-                    trebleFreqHz = 8000,
-                    preGainDb = -2.0f,
-                    stereoWidth = 1.05f,
-                    playbackSpeed = 1.25f,
-                    pitchSemitones = 3.5f,
-                    lockPitchWithSpeed = false,
-                    activePresetName = "Nightcore"
-                )
-
-                AudioProfile.SLOWED_REVERB -> AudioDspConfig(
-                    spatialMode = spatialMode,
-                    activeProfile = profile,
-                    is8dEnabled = isEnabled,
-                    rotationSpeedSeconds = speed,
-                    panDepth = depth,
-                    crossoverSplitHz = 250,
-                    subBassCentering = true,
-                    rotationPattern = RotationPattern.SINE,
-                    rotationDirection = RotationDirection.CLOCKWISE,
-                    useDualTapEcho = false,
-                    echoTap1Ms = 0f,
-                    echoTap2Ms = 0f,
-                    echoDecay1 = 0f,
-                    echoDecay2 = 0f,
-                    echoInGain = 1.0f,
-                    echoOutGain = 1.0f,
-                    roomSize = 0.74f,
-                    reverbLevel = 0.42f,
-                    binauralHrtf = true,
-                    distanceFrontBackCue = true,
-                    crossfeed = true,
-                    crossfeedAmount = 0.20f,
-                    bassBoostEnabled = true,
-                    bassBoostFreq = BassBoostFrequency.FREQ_60HZ,
-                    bassBoostGainDb = 2.5f,
-                    cleanBassProtection = true,
-                    limiterEnabled = true,
-                    trebleClarityDb = 0.5f,
-                    trebleFreqHz = 8000,
-                    preGainDb = -3.0f,
-                    stereoWidth = 1.15f,
-                    playbackSpeed = 0.85f,
-                    pitchSemitones = -2.5f,
-                    lockPitchWithSpeed = false,
-                    activePresetName = "Slowed + Reverbed"
-                )
             }
         }
 
         fun fromJson(json: String): AudioDspConfig? {
             return try {
-                val sanitizedJson = json.replace("\"CONCERT_HALL\"", "\"BALANCED\"")
+                val sanitizedJson = json
+                    .replace("\"CONCERT_HALL\"", "\"BALANCED\"")
+                    .replace("\"NIGHTCORE\"", "\"BALANCED\"")
+                    .replace("\"SLOWED_REVERB\"", "\"BALANCED\"")
                 val cfg = Gson().fromJson(sanitizedJson, AudioDspConfig::class.java) ?: return null
                 var fixed = cfg
                 @Suppress("SENSELESS_COMPARISON")
@@ -302,10 +224,43 @@ data class AudioDspConfig(
                 if (fixed.rotationDirection == null) {
                     fixed = fixed.copy(rotationDirection = RotationDirection.CLOCKWISE)
                 }
+                @Suppress("SENSELESS_COMPARISON")
+                if (fixed.eqBands == null || fixed.eqBands.size != 10) {
+                    fixed = fixed.copy(eqBands = listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f))
+                }
+                @Suppress("SENSELESS_COMPARISON")
+                if (fixed.eqPreset == null) {
+                    fixed = fixed.copy(eqPreset = "Flat")
+                }
                 fixed
             } catch (e: Exception) {
                 null
             }
         }
     }
+}
+
+/**
+ * 10-Band Graphic Equalizer Presets & Configuration.
+ * Derived from the WirePlumber / PipeWire smart filter mechanism in EQ-Clone (ryoku-eq).
+ * Center frequencies: 31, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000 Hz.
+ * Filter type: Biquad peaking EQ (bq_peaking) with Q = 1.41 (one octave bandwidth).
+ */
+object EqPresets {
+    val FREQUENCIES = doubleArrayOf(31.0, 63.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0)
+    const val BAND_Q = 1.41 // Classic graphic-EQ Q = sqrt(2) from ryoku-eq
+
+    // Presets from EQ-Clone + Nightcore and Slowed+Reverbed (without spatial panning)
+    val PRESETS = mapOf(
+        "Flat" to floatArrayOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f),
+        "Bass" to floatArrayOf(5f, 7f, 5f, 2f, 1f, 0f, 0f, 0f, 1f, 2f),
+        "Treble" to floatArrayOf(-2f, -1f, 0f, 1f, 2f, 3f, 4f, 5f, 6f, 6f),
+        "Vocal" to floatArrayOf(-2f, -1f, 1f, 3f, 5f, 5f, 4f, 2f, 1f, 0f),
+        "Pop" to floatArrayOf(2f, 4f, 2f, 0f, 1f, 2f, 4f, 2f, 1f, 2f),
+        "Rock" to floatArrayOf(5f, 4f, 2f, -1f, -2f, -1f, 2f, 4f, 5f, 6f),
+        "Jazz" to floatArrayOf(3f, 3f, 1f, 1f, 1f, 1f, 2f, 1f, 2f, 3f),
+        "Classic" to floatArrayOf(0f, 1f, 2f, 2f, 2f, 2f, 1f, 2f, 3f, 4f),
+        "Nightcore" to floatArrayOf(-1f, 0f, 0f, 1f, 2f, 3f, 4f, 5f, 6f, 5f),
+        "Slowed + Reverbed" to floatArrayOf(6f, 5f, 3f, 1f, 0f, 0f, -1f, -1f, 0f, 1f)
+    )
 }

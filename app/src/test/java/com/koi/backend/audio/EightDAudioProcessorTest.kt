@@ -165,8 +165,21 @@ class EightDAudioProcessorTest {
         processor.configure(format)
         processor.flush()
 
-        // Enable Nightcore Mode
-        processor.config = AudioDspConfig.createConfig(SpatialMode.MODE_8D, AudioProfile.NIGHTCORE)
+        // Enable Nightcore EQ Profile (without spatial panning)
+        val nightcoreBands = EqPresets.PRESETS["Nightcore"]!!.toList()
+        processor.config = AudioDspConfig(
+            eqEnabled = true,
+            eqPreset = "Nightcore",
+            eqBands = nightcoreBands,
+            playbackSpeed = 1.25f,
+            pitchSemitones = 3.5f,
+            trebleClarityDb = 1.5f,
+            preGainDb = -2.0f,
+            roomSize = 0.40f,
+            reverbLevel = 0.10f,
+            is8dEnabled = false,
+            spatialMode = SpatialMode.OFF
+        )
 
         val frameCount = 48000
         val inBuffer = ByteBuffer.allocate(frameCount * 4).order(ByteOrder.LITTLE_ENDIAN)
@@ -240,9 +253,7 @@ class EightDAudioProcessorTest {
     fun testMinuteSoundsExtractedAcrossAllProfiles() {
         val profiles = arrayOf(
             AudioProfile.BALANCED,
-            AudioProfile.SPATIAL_360,
-            AudioProfile.NIGHTCORE,
-            AudioProfile.SLOWED_REVERB
+            AudioProfile.SPATIAL_360
         )
 
         for (profile in profiles) {
@@ -355,7 +366,7 @@ class EightDAudioProcessorTest {
         assertEquals("Balanced 8D rotation speed should be 11.0s (faster than 13.0s)", 11.0f, cfg8D.rotationSpeedSeconds, 0.01f)
 
         val cfg16D = AudioDspConfig.createConfig(SpatialMode.MODE_16D, AudioProfile.BALANCED)
-        assertEquals("Balanced 16D rotation speed should be 7.5s", 7.5f, cfg16D.rotationSpeedSeconds, 0.01f)
+        assertEquals("Balanced 16D rotation speed should be 9.0s", 9.0f, cfg16D.rotationSpeedSeconds, 0.01f)
     }
 
     @Test
@@ -493,24 +504,6 @@ class EightDAudioProcessorTest {
                     assertEquals(1.0f, config.playbackSpeed, 0.01f)
                     assertEquals(0.0f, config.pitchSemitones, 0.01f)
                 }
-                AudioProfile.NIGHTCORE -> {
-                    assertEquals(13.0f, config.rotationSpeedSeconds, 0.01f)
-                    assertEquals(0.80f, config.panDepth, 0.01f)
-                    assertEquals(1.5f, config.trebleClarityDb, 0.01f)
-                    assertEquals(0.10f, config.reverbLevel, 0.01f)
-                    assertEquals(1.25f, config.playbackSpeed, 0.01f)
-                    assertEquals(3.5f, config.pitchSemitones, 0.01f)
-                }
-                AudioProfile.SLOWED_REVERB -> {
-                    assertEquals(13.0f, config.rotationSpeedSeconds, 0.01f)
-                    assertEquals(0.80f, config.panDepth, 0.01f)
-                    assertEquals(2.5f, config.bassBoostGainDb, 0.01f)
-                    assertEquals(0.5f, config.trebleClarityDb, 0.01f)
-                    assertEquals(0.42f, config.reverbLevel, 0.01f)
-                    assertEquals(0.20f, config.crossfeedAmount, 0.01f)
-                    assertEquals(0.85f, config.playbackSpeed, 0.01f)
-                    assertEquals(-2.5f, config.pitchSemitones, 0.01f)
-                }
             }
         }
     }
@@ -525,40 +518,66 @@ class EightDAudioProcessorTest {
 
             when (profile) {
                 AudioProfile.BALANCED -> {
-                    assertEquals(7.5f, config.rotationSpeedSeconds, 0.01f)
-                    assertEquals(0.88f, config.panDepth, 0.01f)
+                    assertEquals(9.0f, config.rotationSpeedSeconds, 0.01f)
+                    assertEquals(0.78f, config.panDepth, 0.01f)
                     assertEquals(2.8f, config.bassBoostGainDb, 0.01f)
                     assertEquals(1.1f, config.trebleClarityDb, 0.01f)
                     assertEquals(0.05f, config.reverbLevel, 0.01f)
                 }
                 AudioProfile.SPATIAL_360 -> {
-                    assertEquals(7.5f * 1.15f, config.rotationSpeedSeconds, 0.01f)
+                    assertEquals(9.0f * 1.15f, config.rotationSpeedSeconds, 0.01f)
                     assertEquals(0.28f, config.panDepth, 0.01f)
                     assertEquals(3.2f, config.bassBoostGainDb, 0.01f)
                     assertEquals(1.2f, config.trebleClarityDb, 0.01f)
                     assertEquals(0.08f, config.reverbLevel, 0.01f)
                     assertEquals(0.22f, config.crossfeedAmount, 0.01f)
                 }
-                AudioProfile.NIGHTCORE -> {
-                    assertEquals(7.5f, config.rotationSpeedSeconds, 0.01f)
-                    assertEquals(0.88f, config.panDepth, 0.01f)
-                    assertEquals(1.5f, config.trebleClarityDb, 0.01f)
-                    assertEquals(0.10f, config.reverbLevel, 0.01f)
-                    assertEquals(1.25f, config.playbackSpeed, 0.01f)
-                    assertEquals(3.5f, config.pitchSemitones, 0.01f)
-                }
-                AudioProfile.SLOWED_REVERB -> {
-                    assertEquals(7.5f, config.rotationSpeedSeconds, 0.01f)
-                    assertEquals(0.88f, config.panDepth, 0.01f)
-                    assertEquals(2.5f, config.bassBoostGainDb, 0.01f)
-                    assertEquals(0.5f, config.trebleClarityDb, 0.01f)
-                    assertEquals(0.42f, config.reverbLevel, 0.01f)
-                    assertEquals(0.20f, config.crossfeedAmount, 0.01f)
-                    assertEquals(0.85f, config.playbackSpeed, 0.01f)
-                    assertEquals(-2.5f, config.pitchSemitones, 0.01f)
-                }
             }
         }
+    }
+
+    @Test
+    fun test10BandGraphicEqualizerAndPresets() {
+        val presets = EqPresets.PRESETS
+        assertEquals(10, presets.size)
+        assertTrue(presets.containsKey("Flat"))
+        assertTrue(presets.containsKey("Bass"))
+        assertTrue(presets.containsKey("Treble"))
+        assertTrue(presets.containsKey("Vocal"))
+        assertTrue(presets.containsKey("Pop"))
+        assertTrue(presets.containsKey("Rock"))
+        assertTrue(presets.containsKey("Jazz"))
+        assertTrue(presets.containsKey("Classic"))
+        assertTrue(presets.containsKey("Nightcore"))
+        assertTrue(presets.containsKey("Slowed + Reverbed"))
+
+        // Test EQ processing
+        val processor = EightDAudioProcessor()
+        val format = AudioProcessor.AudioFormat(44100, 2, C.ENCODING_PCM_16BIT)
+        processor.configure(format)
+        processor.flush()
+
+        // Enable Rock preset from EQ-Clone
+        val rockBands = presets["Rock"]!!.toList()
+        processor.config = AudioDspConfig(
+            eqEnabled = true,
+            eqPreset = "Rock",
+            eqBands = rockBands
+        )
+
+        val frameCount = 44100
+        val inBuffer = ByteBuffer.allocate(frameCount * 4).order(ByteOrder.LITTLE_ENDIAN)
+        for (i in 0 until frameCount) {
+            val bass = (kotlin.math.sin(2.0 * Math.PI * 63.0 * i / 44100.0) * 10000.0).toInt().toShort()
+            inBuffer.putShort(bass)
+            inBuffer.putShort(bass)
+        }
+        inBuffer.flip()
+
+        processor.queueInput(inBuffer)
+        val outBuffer = processor.output
+        assertTrue(outBuffer.hasRemaining())
+        assertEquals(frameCount * 4, outBuffer.remaining())
     }
 
     @Test

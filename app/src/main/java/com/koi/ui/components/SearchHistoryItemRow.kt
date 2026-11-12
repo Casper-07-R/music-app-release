@@ -204,8 +204,9 @@ fun SearchHistoryItemRow(
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.height(2.dp))
+                    val cleanAudience = artist?.subscribersOrAudience?.replace(Regex("""^Artist\s*•\s*""", RegexOption.IGNORE_CASE), "")?.trim()
                     Text(
-                        text = "Artist" + if (!artist?.subscribersOrAudience.isNullOrBlank()) " • ${artist?.subscribersOrAudience}" else "",
+                        text = if (!cleanAudience.isNullOrBlank()) "Artist • $cleanAudience" else "Artist",
                         fontSize = 12.sp,
                         fontFamily = CircularFontFamily,
                         fontWeight = FontWeight.Normal,

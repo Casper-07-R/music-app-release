@@ -374,6 +374,39 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
         db.update("local_playlists", updateCv, "id = ?", arrayOf(playlistId))
     }
 
+    fun addTracksToPlaylist(playlistId: String, songs: List<SongItem>) {
+        if (songs.isEmpty()) return
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val countCursor = db.rawQuery(
+                "SELECT COUNT(*) FROM local_playlist_tracks WHERE playlist_id = ?",
+                arrayOf(playlistId)
+            )
+            var pos = if (countCursor.moveToFirst()) countCursor.getInt(0) else 0
+            countCursor.close()
+
+            val now = System.currentTimeMillis() / 1000
+            for (song in songs) {
+                val cv = ContentValues().apply {
+                    put("playlist_id", playlistId)
+                    put("video_id", song.videoId)
+                    put("position", pos++)
+                    put("song_json", gson.toJson(song))
+                }
+                db.insertWithOnConflict("local_playlist_tracks", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+            }
+
+            val updateCv = ContentValues().apply {
+                put("updated_at", now)
+            }
+            db.update("local_playlists", updateCv, "id = ?", arrayOf(playlistId))
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     fun removeTrackFromPlaylist(playlistId: String, videoId: String) {
         val db = writableDatabase
         db.delete(

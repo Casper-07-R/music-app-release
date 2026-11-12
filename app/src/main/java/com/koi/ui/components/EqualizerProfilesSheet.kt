@@ -2,6 +2,8 @@ package com.koi.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -15,45 +17,44 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.koi.backend.audio.AudioDspConfig
+import com.koi.backend.audio.EqPresets
 import com.koi.ui.theme.*
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EqualizerProfilesSheet(
     dspConfig: AudioDspConfig,
     selectedPreset: String,
+    showResetButton: Boolean = true,
     onSelectPreset: (String) -> Unit,
     onConfigChange: (AudioDspConfig) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val presets = listOf(
-        "Flat" to floatArrayOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f),
-        "Bass Boost" to floatArrayOf(6f, 5f, 4f, 2f, 0f, 0f, 0f, 0f, 0f, 0f),
-        "Bass Reducer" to floatArrayOf(-6f, -5f, -4f, -2f, 0f, 0f, 0f, 0f, 0f, 0f),
-        "Vocal Clarity" to floatArrayOf(-2f, -1f, 0f, 2f, 4f, 4f, 3f, 1f, 0f, 0f),
-        "Treble Boost" to floatArrayOf(0f, 0f, 0f, 0f, 1f, 2f, 3f, 5f, 6f, 6f),
-        "Electronic" to floatArrayOf(5f, 4f, 2f, 0f, -1f, 1f, 2f, 3f, 4f, 4f),
-        "Rock" to floatArrayOf(5f, 4f, 2f, -1f, -2f, 0f, 2f, 3f, 4f, 5f),
-        "Hip-Hop" to floatArrayOf(7f, 6f, 5f, 2f, 0f, 0f, 1f, 2f, 2f, 1f),
-        "Acoustic" to floatArrayOf(3f, 2f, 1f, 1f, 2f, 2f, 3f, 3f, 2f, 1f),
-        "Jazz" to floatArrayOf(4f, 3f, 2f, 1f, 1f, 1f, 2f, 2f, 1f, 0f)
-    )
-
+    val presets = EqPresets.PRESETS.toList()
     val bandLabels = listOf("31", "63", "125", "250", "500", "1k", "2k", "4k", "8k", "16k")
 
-    // Local state for the 10-band slider faders (initialized from selected preset)
-    var currentBands by remember(selectedPreset) {
-        val found = presets.find { it.first == selectedPreset }?.second
-        mutableStateOf(found?.clone() ?: FloatArray(10) { 0f })
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // Local state for the 10-band slider faders
+    var currentBands by remember(dspConfig.eqBands, selectedPreset) {
+        val initial = if (dspConfig.eqBands.size == 10) {
+            dspConfig.eqBands.toFloatArray()
+        } else {
+            EqPresets.PRESETS[selectedPreset]?.clone() ?: FloatArray(10) { 0f }
+        }
+        mutableStateOf(initial)
     }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
         containerColor = RogSurfaceDark,
         scrimColor = RogObsidian.copy(alpha = 0.75f),
@@ -74,7 +75,7 @@ fun EqualizerProfilesSheet(
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 36.dp)
         ) {
-            // Header
+            // Header with EQ status and Reset button
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -84,22 +85,33 @@ fun EqualizerProfilesSheet(
                     Icon(
                         imageVector = Icons.Default.GraphicEq,
                         contentDescription = "Equalizer",
-                        tint = RogTextGold,
-                        modifier = Modifier.size(20.dp)
+                        tint = if (dspConfig.eqEnabled) RogTextGold else RogTextSecondary,
+                        modifier = Modifier.size(22.dp)
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
-                        Text(
-                            text = "EQUALIZER PROFILES",
-                            fontSize = 12.sp,
-                            fontFamily = CircularFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            color = RogTextGold,
-                            letterSpacing = 1.sp
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "EQUALIZER",
+                                fontSize = 12.sp,
+                                fontFamily = CircularFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = if (dspConfig.eqEnabled) RogTextGold else RogTextSecondary,
+                                letterSpacing = 1.sp
+                            )
+                            if (!dspConfig.eqEnabled) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "(Bypassed)",
+                                    fontSize = 11.sp,
+                                    fontFamily = CircularFontFamily,
+                                    color = RogTextMuted
+                                )
+                            }
+                        }
                         Text(
                             text = "10-Band Graphic Acoustic Tuning",
-                            fontSize = 14.sp,
+                            fontSize = 13.5.sp,
                             fontFamily = CircularFontFamily,
                             fontWeight = FontWeight.Normal,
                             color = RogTextSecondary
@@ -107,19 +119,37 @@ fun EqualizerProfilesSheet(
                     }
                 }
 
-                TextButton(
-                    onClick = {
-                        onSelectPreset("Flat")
-                        currentBands = FloatArray(10) { 0f }
-                    }
-                ) {
-                    Text(
-                        text = "Reset",
-                        fontSize = 12.sp,
-                        fontFamily = CircularFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        color = RogTextGold
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(
+                        checked = dspConfig.eqEnabled,
+                        onCheckedChange = { isChecked ->
+                            onConfigChange(dspConfig.copy(eqEnabled = isChecked))
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = RogObsidian,
+                            checkedTrackColor = RogTextGold,
+                            uncheckedThumbColor = RogTextMuted,
+                            uncheckedTrackColor = RogSurfaceSubtle
+                        )
                     )
+
+                    if (showResetButton) {
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        TextButton(
+                            onClick = {
+                                onSelectPreset("Flat")
+                            }
+                        ) {
+                            Text(
+                                text = "Reset",
+                                fontSize = 12.sp,
+                                fontFamily = CircularFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = RogTextGold
+                            )
+                        }
+                    }
                 }
             }
 
@@ -168,7 +198,7 @@ fun EqualizerProfilesSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // 10-Band Faders Box
+            // 10-Band Interactive Faders Box
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -189,7 +219,7 @@ fun EqualizerProfilesSheet(
                             color = RogTextMuted
                         )
                         Text(
-                            text = "FREQUENCY BANDS (Hz)",
+                            text = "FREQUENCY BANDS (Hz) • LIVE GAIN",
                             fontSize = 9.sp,
                             fontFamily = CircularFontFamily,
                             fontWeight = FontWeight.Bold,
@@ -206,11 +236,11 @@ fun EqualizerProfilesSheet(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // 10-Band Sliders Column Grid
+                    // 10-Band Interactive Sliders Row Grid
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(130.dp),
+                            .height(140.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -232,12 +262,54 @@ fun EqualizerProfilesSheet(
                                     color = if (gain != 0f) RogTextGold else RogTextMuted
                                 )
 
-                                // Vertical Bar representation
-                                Box(
+                                // Interactive Vertical Fader Column
+                                BoxWithConstraints(
                                     modifier = Modifier
-                                        .width(18.dp)
+                                        .width(24.dp)
                                         .weight(1f)
-                                        .padding(vertical = 4.dp),
+                                        .padding(vertical = 4.dp)
+                                        .pointerInput(i, dspConfig) {
+                                            awaitEachGesture {
+                                                val down = awaitFirstDown()
+                                                val h = size.height.toFloat()
+                                                if (h > 0f) {
+                                                    val fraction = (1f - (down.position.y / h)).coerceIn(0f, 1f)
+                                                    val db = (fraction * 24f - 12f).roundToInt().toFloat()
+                                                    val newBands = currentBands.clone()
+                                                    newBands[i] = db
+                                                    currentBands = newBands
+                                                    onSelectPreset("Custom")
+                                                    onConfigChange(
+                                                        dspConfig.copy(
+                                                            eqEnabled = true,
+                                                            eqPreset = "Custom",
+                                                            eqBands = newBands.toList()
+                                                        )
+                                                    )
+                                                }
+                                                while (true) {
+                                                    val event = awaitPointerEvent()
+                                                    val change = event.changes.firstOrNull() ?: break
+                                                    if (!change.pressed) break
+                                                    val fraction = (1f - (change.position.y / h)).coerceIn(0f, 1f)
+                                                    val db = (fraction * 24f - 12f).roundToInt().toFloat()
+                                                    if (currentBands.getOrElse(i) { 0f } != db) {
+                                                        val newBands = currentBands.clone()
+                                                        newBands[i] = db
+                                                        currentBands = newBands
+                                                        onSelectPreset("Custom")
+                                                        onConfigChange(
+                                                            dspConfig.copy(
+                                                                eqEnabled = true,
+                                                                eqPreset = "Custom",
+                                                                eqBands = newBands.toList()
+                                                            )
+                                                        )
+                                                    }
+                                                    change.consume()
+                                                }
+                                            }
+                                        },
                                     contentAlignment = Alignment.Center
                                 ) {
                                     // Track line
@@ -249,21 +321,35 @@ fun EqualizerProfilesSheet(
                                             .background(RogSurfaceHighlight)
                                     )
 
+                                    // Center (0 dB) tick indicator
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.Center)
+                                            .width(8.dp)
+                                            .height(1.dp)
+                                            .background(RogTextMuted.copy(alpha = 0.5f))
+                                    )
+
                                     // Thumb fader positioned by gain (-12 to +12)
                                     val fraction = ((gain + 12f) / 24f).coerceIn(0f, 1f)
+
+                                    // Active colored fill from center or thumb
                                     Box(
                                         modifier = Modifier
                                             .align(Alignment.BottomCenter)
                                             .fillMaxHeight(fraction)
-                                            .width(4.dp)
-                                            .background(RogTextGold)
+                                            .width(3.dp)
+                                            .background(if (dspConfig.eqEnabled) RogTextGold else RogTextMuted)
                                     )
 
+                                    // Thumb knob
                                     Box(
                                         modifier = Modifier
-                                            .size(10.dp)
+                                            .align(Alignment.BottomCenter)
+                                            .padding(bottom = (fraction * (maxHeight.value - 12.dp.value)).dp.coerceAtLeast(0.dp))
+                                            .size(12.dp)
                                             .clip(CircleShape)
-                                            .background(RogTextGold)
+                                            .background(if (dspConfig.eqEnabled) RogTextGold else RogSurfaceHighlight)
                                     )
                                 }
 

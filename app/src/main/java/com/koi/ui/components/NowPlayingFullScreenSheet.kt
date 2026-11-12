@@ -23,6 +23,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -60,7 +62,7 @@ fun NowPlayingFullScreenSheet(
     onPlayPauseClick: () -> Unit,
     onSkipNextClick: () -> Unit,
     onSkipPrevClick: () -> Unit,
-    onLikeClick: () -> Unit,
+    onEqClick: () -> Unit,
     onShuffleClick: () -> Unit,
     onRepeatClick: () -> Unit,
     onSeek: (Float) -> Unit,
@@ -70,6 +72,7 @@ fun NowPlayingFullScreenSheet(
     isEightDActive: Boolean = false,
     eightDLabel: String = "8D",
     activeProfileName: String = "",
+    isEqActive: Boolean = false,
     onDownloadClick: () -> Unit = {},
     onEightDClick: () -> Unit = {},
     onEightDLongClick: () -> Unit = {},
@@ -466,6 +469,30 @@ fun NowPlayingFullScreenSheet(
                                     onAddToPlaylistClick()
                                 }
                             )
+
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = "Equalizer",
+                                        fontFamily = CircularFontFamily,
+                                        fontWeight = FontWeight.Medium,
+                                        color = RogTextPrimary,
+                                        fontSize = 14.sp
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.GraphicEq,
+                                        contentDescription = null,
+                                        tint = RogGoldPrimary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showOptionsMenu = false
+                                    onEqClick()
+                                }
+                            )
                         }
                     }
                 }
@@ -535,7 +562,7 @@ fun NowPlayingFullScreenSheet(
                                     modifier = Modifier.size(20.dp),
                                     color = RogGoldPrimary,
                                     strokeWidth = 2.dp,
-                                    trackColor = RogSurfaceDark
+                                    trackColor = Color.Transparent
                                 )
                             }
                         } else {
@@ -554,40 +581,74 @@ fun NowPlayingFullScreenSheet(
                             }
                         }
 
-                        // Like
+                        // Equalizer Button (replaces Like button)
                         IconButton(
-                            onClick = onLikeClick,
+                            onClick = onEqClick,
                             modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
-                                painter = painterResource(
-                                    id = if (track.isLiked) R.drawable.ic_heart_filled else R.drawable.ic_heart
-                                ),
-                                contentDescription = "Like",
-                                tint = if (track.isLiked) RogTextGold else RogTextSecondary,
-                                modifier = Modifier.size(20.dp)
+                                imageVector = Icons.Default.GraphicEq,
+                                contentDescription = "Equalizer",
+                                tint = if (isEqActive) RogTextGold else RogTextSecondary,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
 
-                        // 8D / 16D Minimal Pill (No border)
+                        // 8D / 16D Button (Fixed width & height so button dimensions never change and other buttons stay undisturbed)
+                        val showProfileSubtitle = isEightDActive && activeProfileName.isNotBlank()
+                        val eightDTextSize by animateFloatAsState(
+                            targetValue = if (showProfileSubtitle) 12.sp.value else 17.5.sp.value,
+                            animationSpec = tween(durationMillis = 180),
+                            label = "eightDTextSize"
+                        )
+
+                        val displayProfileTag = when (activeProfileName.trim().lowercase()) {
+                            "surround 360°", "surround 360", "360°" -> "360°"
+                            "balanced" -> "Balanced"
+                            else -> activeProfileName.trim()
+                        }
+
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (isEightDActive) RogSurfaceHighlight else Color.Transparent)
+                                .width(42.dp)
+                                .height(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
                                 .combinedClickable(
                                     onClick = onEightDClick,
                                     onLongClick = onEightDLongClick
-                                )
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = eightDLabel,
-                                fontSize = 12.sp,
-                                fontFamily = CircularFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isEightDActive) RogTextGold else RogTextMuted
-                            )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    text = eightDLabel,
+                                    fontSize = eightDTextSize.sp,
+                                    fontFamily = CircularFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isEightDActive) RogTextGold else RogTextSecondary,
+                                    lineHeight = eightDTextSize.sp
+                                )
+                                AnimatedVisibility(
+                                    visible = showProfileSubtitle,
+                                    enter = fadeIn(tween(140)) + expandVertically(tween(180)),
+                                    exit = fadeOut(tween(140)) + shrinkVertically(tween(180))
+                                ) {
+                                    Text(
+                                        text = displayProfileTag,
+                                        fontSize = 8.sp,
+                                        fontFamily = CircularFontFamily,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = RogTextGold.copy(alpha = 0.85f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        lineHeight = 9.5.sp,
+                                        modifier = Modifier.padding(top = 1.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }

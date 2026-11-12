@@ -80,6 +80,10 @@ class EightDAudioProcessor : BaseAudioProcessor() {
     private val definitionFilterL = BiquadFilter()
     private val definitionFilterR = BiquadFilter()
 
+    // 10-Band Graphic Equalizer Filter Chain (PipeWire smart filter bq_peaking from EQ-Clone)
+    private val eqFiltersL = Array(10) { BiquadFilter() }
+    private val eqFiltersR = Array(10) { BiquadFilter() }
+
     // Reverb Low-Cut Filter (High-pass at 220 Hz to avoid bass mud)
     private val reverbHpFilter = BiquadFilter()
 
@@ -273,6 +277,14 @@ class EightDAudioProcessor : BaseAudioProcessor() {
             inL = definitionFilterL.process(inL)
             inR = definitionFilterR.process(inR)
 
+            // 10-Band Graphic Equalizer Filter Chain (PipeWire bq_peaking mechanism from EQ-Clone)
+            if (cfg.eqEnabled) {
+                for (b in 0 until 10) {
+                    inL = eqFiltersL[b].process(inL)
+                    inR = eqFiltersR[b].process(inR)
+                }
+            }
+
             // Upward Micro-Dynamics Detail Extractor:
             // Elevates even the slightest minute sounds (whispers, finger slides, breaths, cymbal tails, ghost notes)
             // with crystal-clear high-frequency air definition without squashing loud drum/kick attacks
@@ -398,39 +410,49 @@ class EightDAudioProcessor : BaseAudioProcessor() {
                 if (rotationPhase < 0) rotationPhase += 2.0 * Math.PI
 
                 val angle = rotationPhase
+                val is16D = cfg.spatialMode == SpatialMode.MODE_16D
                 val xPos: Float
                 val yPos: Float
 
-                when (cfg.rotationPattern) {
-                    RotationPattern.SINE -> {
-                        xPos = sin(angle).toFloat()
-                        yPos = cos(angle).toFloat()
-                    }
-                    RotationPattern.TRIANGLE -> {
-                        val tri = (2.0 / Math.PI * asin(sin(angle))).toFloat()
-                        val triY = (2.0 / Math.PI * asin(sin(angle + Math.PI / 2.0))).toFloat()
-                        xPos = tri
-                        yPos = triY
-                    }
-                    RotationPattern.SQUARE -> {
-                        xPos = if (sin(angle) >= 0) 1.0f else -1.0f
-                        yPos = if (cos(angle) >= 0) 1.0f else -1.0f
+                if (is16D) {
+                    // 16D multi-dimensional figure-8 orbital trajectory:
+                    // x moves smoothly left to right, y performs an acoustic infinity loop
+                    // creating an expansive, floating figure-eight orbit that seamlessly
+                    // stays in phase with 8D while providing enhanced 3D spatial depth
+                    xPos = sin(angle).toFloat()
+                    yPos = sin(2.0 * angle).toFloat()
+                } else {
+                    when (cfg.rotationPattern) {
+                        RotationPattern.SINE -> {
+                            xPos = sin(angle).toFloat()
+                            yPos = cos(angle).toFloat()
+                        }
+                        RotationPattern.TRIANGLE -> {
+                            val tri = (2.0 / Math.PI * asin(sin(angle))).toFloat()
+                            val triY = (2.0 / Math.PI * asin(sin(angle + Math.PI / 2.0))).toFloat()
+                            xPos = tri
+                            yPos = triY
+                        }
+                        RotationPattern.SQUARE -> {
+                            xPos = if (sin(angle) >= 0) 1.0f else -1.0f
+                            yPos = if (cos(angle) >= 0) 1.0f else -1.0f
+                        }
                     }
                 }
 
                 // apulsator formula aligned with ITD / binaural psychoacoustics
-                // Guaranteed minimum sound on opposite ear when reaching maximum deflection (~15%)
+                // Guaranteed minimum sound on opposite ear when reaching maximum deflection (10%)
                 // The opposite ear NEVER empties out or cuts to silence
-                val minOpposite = 0.15f
+                val minOpposite = 0.10f
                 val panRange = 1.0f - minOpposite
                 val panSweep = cfg.panDepth.coerceIn(0.2f, 1.0f) * panRange
                 val gainL = (1.0f - panSweep) + panSweep * 0.5f * (1.0f - xPos)
                 val gainR = (1.0f - panSweep) + panSweep * 0.5f * (1.0f + xPos)
 
                 // Front-Back Distance Depth Cue (preserves 100% crisp high-frequency brilliance with zero muffling)
-                if (cfg.distanceFrontBackCue) {
+                if (cfg.distanceFrontBackCue || is16D) {
                     val backness = (-yPos).coerceIn(0f, 1f)
-                    val backGain = 1.0f - backness * 0.10f
+                    val backGain = 1.0f - backness * 0.08f
                     hipL *= backGain
                     hipR *= backGain
                 }
@@ -676,6 +698,15 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         definitionFilterL.setPeakingEQ(freq = 3600.0, gainDb = defGain, sampleRate = fs, Q = 0.90)
         definitionFilterR.setPeakingEQ(freq = 3600.0, gainDb = defGain, sampleRate = fs, Q = 0.90)
 
+        // 10-Band Graphic Equalizer Filter Chain (PipeWire bq_peaking from EQ-Clone)
+        val eqBands = cfg.eqBands
+        for (b in 0 until 10) {
+            val gainDb = if (cfg.eqEnabled) (eqBands.getOrElse(b) { 0f }).toDouble() else 0.0
+            val safeFreq = EqPresets.FREQUENCIES[b].coerceIn(10.0, (fs * 0.45).coerceAtLeast(1000.0))
+            eqFiltersL[b].setPeakingEQ(freq = safeFreq, gainDb = gainDb, sampleRate = fs, Q = EqPresets.BAND_Q)
+            eqFiltersR[b].setPeakingEQ(freq = safeFreq, gainDb = gainDb, sampleRate = fs, Q = EqPresets.BAND_Q)
+        }
+
         // Reverb Low-Cut Filter (High-pass at crossover split frequency to eliminate drum/bass rumble from reverb)
         reverbHpFilter.setHighPass(freq = cfg.crossoverSplitHz.toDouble().coerceAtLeast(220.0), sampleRate = fs)
     }
@@ -721,6 +752,10 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         vocalFilterR.reset()
         definitionFilterL.reset()
         definitionFilterR.reset()
+        for (b in 0 until 10) {
+            eqFiltersL[b].reset()
+            eqFiltersR[b].reset()
+        }
         reverbHpFilter.reset()
         for (c in 0 until 4) {
             combBuffersL[c].fill(0f)

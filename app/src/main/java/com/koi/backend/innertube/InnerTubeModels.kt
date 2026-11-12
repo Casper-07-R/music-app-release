@@ -47,7 +47,8 @@ data class PlaylistResult(
     val subtitle: String? = null,
     val description: String? = null,
     val thumbnailUrl: String? = null,
-    val tracks: List<SongItem> = emptyList()
+    val tracks: List<SongItem> = emptyList(),
+    val isAlbum: Boolean = false
 )
 
 data class ArtistItem(

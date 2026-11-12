@@ -35,9 +35,11 @@ fun EightDProfileSelectorSheet(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
         onDismissRequest = onClose,
+        sheetState = sheetState,
         containerColor = RogObsidian,
         dragHandle = {
             BottomSheetDefaults.DragHandle(color = RogSurfaceHighlight)
@@ -100,8 +102,6 @@ fun EightDProfileSelectorSheet(
                 val tagText = when (profile) {
                     AudioProfile.BALANCED -> "Clarity"
                     AudioProfile.SPATIAL_360 -> "360° Surround"
-                    AudioProfile.NIGHTCORE -> "Fast & High"
-                    AudioProfile.SLOWED_REVERB -> "Slowed Reverb"
                 }
 
                 Card(
