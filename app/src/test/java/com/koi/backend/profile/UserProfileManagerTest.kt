@@ -83,4 +83,16 @@ class UserProfileManagerTest {
         )
         assertFalse(shouldPrompt)
     }
+
+    @Test
+    fun testShouldShowTutorial_firstOpenAfterInstall_returnsTrue() {
+        // When user has not completed tutorial yet, it MUST show
+        assertTrue(UserProfileManager.shouldShowTutorial(hasCompletedTutorial = false))
+    }
+
+    @Test
+    fun testShouldShowTutorial_afterCompletion_returnsFalse() {
+        // Once completed, it must NOT show automatically again
+        assertFalse(UserProfileManager.shouldShowTutorial(hasCompletedTutorial = true))
+    }
 }

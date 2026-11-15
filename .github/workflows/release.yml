@@ -33,6 +33,7 @@ jobs:
             * **Custom Streaming Preferences**: Interactive ROG-styled Streaming Quality sheet in Settings to select Auto, High, Medium, Low, or Data Saver modes.
 
             ### 🎮 Interactive Game Mechanics Onboarding Tutorial
+            * **Guaranteed First-Run Walkthrough**: The interactive tutorial now plays automatically the very first time the app is opened after installing.
             * **Cinematic Spotlight Walkthrough**: Complete HUD quest-driven walkthrough introducing 360° audio & 10-band EQ, sound stations, private vault, adaptive streaming quality, and gentle bedtime timers.
             * **Replay Support**: Replay the onboarding tutorial anytime from Settings -> Replay Game Mechanics Tutorial.
 

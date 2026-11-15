@@ -201,34 +201,34 @@ class AppUpdateManager(
     fun previewUpdate() {
         isPreviewMode = true
         val release = GitHubRelease(
-            id = 201,
-            tagName = "v1.2.1",
-            name = "Koi v1.2.1 - Adaptive Audio & Fallback Streaming",
+            id = 202,
+            tagName = "v1.2.2",
+            name = "Koi v1.2.2 - Onboarding Tutorial & Audio Quality",
             body = """
                 ### Added Features
+                * Immediate First-Run Game Mechanics Tutorial
                 * Adaptive Audio Quality & Zero-Buffering Streaming
-                * Interactive Game Mechanics Onboarding Tutorial
+                * 10-Band Equalizer & 360° Spatial Sound
                 * Swipe to Dismiss Mini-Player
                 
-                ### Bug Fixes
-                * Fixed startup NullPointerException in PlayerEngine
-                * Optimized network coverage detection
+                ### Stability
+                * Guaranteed tutorial launch on first open after installing
             """.trimIndent(),
-            publishedAt = "2026-11-15T08:00:00Z",
-            htmlUrl = "https://github.com/Casper-07-R/music-app-release/releases/tag/v1.2.1",
+            publishedAt = "2026-11-15T08:30:00Z",
+            htmlUrl = "https://github.com/Casper-07-R/music-app-release/releases/tag/v1.2.2",
             assets = listOf(
                 GitHubAsset(
-                    id = 999,
-                    name = "Koi-v1.2.1.apk",
+                    id = 1000,
+                    name = "Koi-v1.2.2.apk",
                     size = 18_800_000L,
                     contentType = "application/vnd.android.package-archive",
-                    browserDownloadUrl = "https://github.com/Casper-07-R/music-app-release/releases/download/v1.2.1/Koi-v1.2.1.apk"
+                    browserDownloadUrl = "https://github.com/Casper-07-R/music-app-release/releases/download/v1.2.2/Koi-v1.2.2.apk"
                 )
             )
         )
         val apkAsset = release.assets.first()
         _state.value = UpdateUiState.UpdateAvailable(
-            currentVersion = "1.2.0",
+            currentVersion = "1.2.1",
             release = release,
             apkAsset = apkAsset
         )
