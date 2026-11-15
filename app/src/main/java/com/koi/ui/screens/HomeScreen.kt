@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,6 +28,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import com.koi.ui.components.TutorialTarget
 import coil.compose.AsyncImage
 import com.koi.backend.audio.AudioDspConfig
 import com.koi.backend.audio.SpatialMode
@@ -56,9 +62,27 @@ fun HomeScreen(
     onProfileClick: () -> Unit,
     onSettingsClick: () -> Unit = onProfileClick,
     onOpenFullScreen: () -> Unit,
+    onTargetPositioned: (TutorialTarget, Rect) -> Unit = { _, _ -> },
+    tutorialStep: Int? = null,
     modifier: Modifier = Modifier
 ) {
+    val listState = rememberLazyListState()
+
+    // Smoothly scroll to the target feature when the active tutorial step changes
+    LaunchedEffect(tutorialStep) {
+        if (tutorialStep != null) {
+            when (tutorialStep) {
+                0 -> listState.animateScrollToItem(0) // Top (Spatial Deck)
+                1 -> listState.animateScrollToItem(2) // Sound Stations
+                2 -> listState.animateScrollToItem(3) // Vault
+                3 -> listState.animateScrollToItem(0) // Top (Settings & Streaming Quality)
+                4 -> listState.animateScrollToItem(0) // Top (Sleep Timer Header)
+            }
+        }
+    }
+
     LazyColumn(
+        state = listState,
         modifier = modifier
             .fillMaxSize()
             .background(RogObsidian),
@@ -114,6 +138,7 @@ fun HomeScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(12.dp))
+                                    .onGloballyPositioned { coords -> onTargetPositioned(TutorialTarget.SLEEP_TIMER, coords.boundsInRoot()) }
                                     .clickable { onOpenSleepTimer() }
                                     .padding(horizontal = 8.dp, vertical = 4.dp),
                                 contentAlignment = Alignment.Center
@@ -140,6 +165,7 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .size(34.dp)
                                     .clip(CircleShape)
+                                    .onGloballyPositioned { coords -> onTargetPositioned(TutorialTarget.SLEEP_TIMER, coords.boundsInRoot()) }
                                     .clickable { onOpenSleepTimer() },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -174,6 +200,7 @@ fun HomeScreen(
                             modifier = Modifier
                                 .size(34.dp)
                                 .clip(CircleShape)
+                                .onGloballyPositioned { coords -> onTargetPositioned(TutorialTarget.SETTINGS, coords.boundsInRoot()) }
                                 .clickable { onSettingsClick() },
                             contentAlignment = Alignment.Center
                         ) {
@@ -195,6 +222,7 @@ fun HomeScreen(
                 modifier = Modifier
                     .padding(horizontal = 20.dp, vertical = 6.dp)
                     .fillMaxWidth()
+                    .onGloballyPositioned { coords -> onTargetPositioned(TutorialTarget.SPATIAL_DECK, coords.boundsInRoot()) }
                     .clip(RoundedCornerShape(28.dp))
             ) {
                 // Background Image: The vibrant Koi pond with water ripples starting from bottom-left corner
@@ -416,6 +444,7 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .onGloballyPositioned { coords -> onTargetPositioned(TutorialTarget.SOUND_STATIONS, coords.boundsInRoot()) }
                     .padding(vertical = 12.dp)
             ) {
                 Column(modifier = Modifier.padding(horizontal = 20.dp)) {
@@ -460,6 +489,7 @@ fun HomeScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .onGloballyPositioned { coords -> onTargetPositioned(TutorialTarget.VAULT, coords.boundsInRoot()) }
                         .padding(vertical = 10.dp)
                 ) {
                     Column(modifier = Modifier.padding(horizontal = 20.dp)) {

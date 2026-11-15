@@ -39,6 +39,9 @@ import com.koi.backend.innertube.InnerTubeClient
 import com.koi.backend.innertube.SongItem
 import com.koi.backend.lyrics.Lyrics
 import com.koi.backend.lyrics.LyricsProvider
+import com.koi.backend.innertube.AudioQualityTier
+import com.koi.backend.innertube.PlaybackStream
+import com.koi.backend.innertube.StreamQuality
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -89,6 +92,7 @@ class PlayerEngine(
     }
 
     private val playbackPrefs = context.getSharedPreferences("koi_playback_state", Context.MODE_PRIVATE)
+    private val streamingPrefs = context.getSharedPreferences("koi_streaming_prefs", Context.MODE_PRIVATE)
     private val gson = Gson()
 
     private fun savePlaybackState(song: SongItem?, positionMs: Long, queue: List<SongItem>, queueIndex: Int) {
@@ -178,9 +182,12 @@ class PlayerEngine(
         }
     }
 
+    val networkCoverageMonitor = NetworkCoverageMonitor(context)
+
     private fun buildDataSourceFactory(userAgent: String): DataSource.Factory {
         val httpFactory = OkHttpDataSource.Factory(innerTube.streamingOkHttpClient)
             .setUserAgent(userAgent)
+            .setTransferListener(networkCoverageMonitor.bandwidthMeter)
         val app = context.applicationContext as? KoiApplication
         val cache = app?.mediaCache
         val upstreamFactory = if (cache != null) {
@@ -195,10 +202,9 @@ class PlayerEngine(
     }
 
     val exoPlayer: ExoPlayer = run {
-        // Force the highest supported bitrate across Opus & AAC audio streams
+        // Support adaptive bitrate selection across Opus & AAC audio streams
         val trackSelector = DefaultTrackSelector(context).apply {
             parameters = buildUponParameters()
-                .setForceHighestSupportedBitrate(true)
                 .setPreferredAudioMimeTypes(MimeTypes.AUDIO_OPUS, MimeTypes.AUDIO_AAC)
                 .build()
         }
@@ -217,13 +223,13 @@ class PlayerEngine(
             }
         }.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
 
-        // Robust buffer management to eliminate background throttling and ensure continuous playback
+        // Resilient buffer management: 2.5s initial buffer eliminates tearing and 3.0s rebuffer eliminates stalls
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 /* minBufferMs = */ 60_000,
                 /* maxBufferMs = */ 300_000,
-                /* bufferForPlaybackMs = */ 500,
-                /* bufferForPlaybackAfterRebufferMs = */ 1_000
+                /* bufferForPlaybackMs = */ 2_500,
+                /* bufferForPlaybackAfterRebufferMs = */ 3_000
             )
             .setBackBuffer(
                 /* backBufferDurationMs = */ 30_000,
@@ -244,6 +250,7 @@ class PlayerEngine(
             .setMediaSourceFactory(mediaSourceFactory)
             .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
+            .setBandwidthMeter(networkCoverageMonitor.bandwidthMeter)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -301,6 +308,45 @@ class PlayerEngine(
     private val _isRepeat = MutableStateFlow(false)
     val isRepeat: StateFlow<Boolean> = _isRepeat.asStateFlow()
 
+    private val _preferredStreamingQuality = MutableStateFlow(loadPreferredStreamingQuality())
+    val preferredStreamingQuality: StateFlow<StreamQuality> = _preferredStreamingQuality.asStateFlow()
+
+    private val _activeStream = MutableStateFlow<PlaybackStream?>(null)
+    val activeStream: StateFlow<PlaybackStream?> = _activeStream.asStateFlow()
+
+    private val _activeQualityTier = MutableStateFlow(AudioQualityTier.HIGH)
+    val activeQualityTier: StateFlow<AudioQualityTier> = _activeQualityTier.asStateFlow()
+
+    private fun loadPreferredStreamingQuality(): StreamQuality {
+        return try {
+            val name = streamingPrefs.getString("preferred_quality", StreamQuality.AUTO.name)
+            StreamQuality.valueOf(name ?: StreamQuality.AUTO.name)
+        } catch (_: Exception) {
+            StreamQuality.AUTO
+        }
+    }
+
+    fun setStreamingQuality(quality: StreamQuality) {
+        _preferredStreamingQuality.value = quality
+        streamingPrefs.edit().putString("preferred_quality", quality.name).apply()
+
+        // Adapt active track smoothly if running
+        val currentStreamObj = _activeStream.value ?: return
+        val targetTier = when (quality) {
+            StreamQuality.AUTO -> networkCoverageMonitor.getRecommendedQualityTier()
+            StreamQuality.HIGH -> AudioQualityTier.HIGH
+            StreamQuality.MEDIUM -> AudioQualityTier.MEDIUM
+            StreamQuality.LOW -> AudioQualityTier.LOW
+            StreamQuality.VERY_LOW -> AudioQualityTier.VERY_LOW
+        }
+        if (currentStreamObj.qualityTier != targetTier) {
+            val candidate = currentStreamObj.getStreamForTier(targetTier)
+            if (candidate.itag != currentStreamObj.itag) {
+                switchStreamQuality(candidate, if (_currentPositionMs.value > 0) _currentPositionMs.value else exoPlayer.currentPosition)
+            }
+        }
+    }
+
     private var progressJob: Job? = null
     private var resolveJob: Job? = null
     private var lyricsJob: Job? = null
@@ -309,13 +355,41 @@ class PlayerEngine(
     private var bufferingWatchdogJob: Job? = null
     private var lastSkipTimestamp = 0L
 
+    private val rebufferingTimestamps = java.util.ArrayDeque<Long>()
+
     private fun startBufferingWatchdog() {
         bufferingWatchdogJob?.cancel()
+        val now = System.currentTimeMillis()
+        rebufferingTimestamps.addLast(now)
+        while (rebufferingTimestamps.isNotEmpty() && now - rebufferingTimestamps.first > 20_000L) {
+            rebufferingTimestamps.removeFirst()
+        }
+
+        // Tearing detection: If 2 or more rebuffering events happen within 20s,
+        // it indicates continuous buffer starvation. Immediately fall back to lower bitrate!
+        if (rebufferingTimestamps.size >= 2) {
+            val fallbackTriggered = tryFallbackToLowerQuality("Frequent rebuffering tearing detected (${rebufferingTimestamps.size}x in 20s)")
+            if (fallbackTriggered) {
+                rebufferingTimestamps.clear()
+                return
+            }
+        }
+
         bufferingWatchdogJob = scope.launch {
-            delay(8000)
+            // Stage 1: Quick stall watchdog (2.5s)
+            delay(2500)
+            if (isActive && exoPlayer.playbackState == Player.STATE_BUFFERING && exoPlayer.playWhenReady) {
+                val fallbackTriggered = tryFallbackToLowerQuality("Playback stalled in buffering for > 2.5s")
+                if (fallbackTriggered) {
+                    return@launch
+                }
+            }
+
+            // Stage 2: Deep stall recovery (6.5s)
+            delay(4000)
             if (isActive && exoPlayer.playbackState == Player.STATE_BUFFERING && exoPlayer.playWhenReady) {
                 val currentPos = if (_currentPositionMs.value > 0) _currentPositionMs.value else exoPlayer.currentPosition.coerceAtLeast(0L)
-                Log.w(TAG, "Playback stuck in buffering for 8s, auto-nudge recovery at ${currentPos}ms...")
+                Log.w(TAG, "Playback still stuck in buffering after 6.5s, auto-nudge recovery at ${currentPos}ms...")
                 if (currentPos > 0) {
                     exoPlayer.seekTo(currentPos)
                 } else {
@@ -326,9 +400,62 @@ class PlayerEngine(
         }
     }
 
+    private fun tryFallbackToLowerQuality(reason: String): Boolean {
+        val currentStreamObj = _activeStream.value ?: return false
+        val currentSong = _currentTrack.value ?: return false
+
+        val fallback = currentStreamObj.getFallbackStream()
+        if (fallback != null) {
+            val currentPos = if (_currentPositionMs.value > 0) _currentPositionMs.value else exoPlayer.currentPosition.coerceAtLeast(0L)
+            Log.i(TAG, "Adaptive Fallback [$reason]: Switching from ${currentStreamObj.bitrate / 1000}kbps to fallback itag ${fallback.itag} (${fallback.bitrate / 1000}kbps, ${fallback.mimeType}) for ${currentSong.title} at ${currentPos}ms")
+            switchStreamQuality(fallback, currentPos)
+            return true
+        }
+        return false
+    }
+
+    private fun switchStreamQuality(newStream: PlaybackStream, resumePositionMs: Long) {
+        val current = _currentTrack.value ?: return
+        val highResThumb = InnerTubeClient.getHighResThumbnailUrl(current.thumbnailUrl)
+        val metadata = MediaMetadata.Builder()
+            .setTitle(current.title)
+            .setArtist(current.artists)
+            .setAlbumTitle(current.album ?: "")
+            .setArtworkUri(highResThumb?.let { Uri.parse(it) } ?: current.thumbnailUrl?.let { Uri.parse(it) })
+            .build()
+
+        val mediaItem = MediaItem.Builder()
+            .setUri(newStream.streamUrl)
+            .setMimeType(newStream.mimeType)
+            .setMediaId(current.videoId)
+            .setCustomCacheKey("${current.videoId}_${newStream.itag}")
+            .setMediaMetadata(metadata)
+            .build()
+
+        val dataSourceFactory = buildDataSourceFactory(newStream.userAgent ?: InnerTubeClient.VISIONOS_USER_AGENT)
+        val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem)
+
+        // Preserve all fallbacks on the new active stream
+        val allFallbacks = (newStream.fallbackStreams + (_activeStream.value?.getAllStreams() ?: emptyList()))
+            .filter { it.itag != newStream.itag }
+            .distinctBy { it.itag }
+            .sortedByDescending { it.bitrate }
+
+        _activeStream.value = newStream.copy(fallbackStreams = allFallbacks)
+        _activeQualityTier.value = newStream.qualityTier
+
+        exoPlayer.setMediaSource(mediaSource)
+        if (resumePositionMs > 500L) {
+            exoPlayer.seekTo(resumePositionMs)
+        }
+        exoPlayer.prepare()
+        exoPlayer.play()
+    }
+
     private fun stopBufferingWatchdog() {
         bufferingWatchdogJob?.cancel()
         bufferingWatchdogJob = null
+        rebufferingTimestamps.clear()
     }
 
     init {
@@ -404,6 +531,12 @@ class PlayerEngine(
 
                 val current = _currentTrack.value ?: return
 
+                // Before attempting expensive re-resolution, try playing lower-bitrate fallback stream
+                val fallbackTriggered = tryFallbackToLowerQuality("Auto-recovery on player error ${error.errorCodeName}")
+                if (fallbackTriggered) {
+                    return
+                }
+
                 if (lastFailedVideoId == current.videoId && errorRetryCount >= 2) {
                     Log.w(TAG, "Max auto-recovery retries reached for ${current.title}, advancing to next track")
                     errorRetryCount = 0
@@ -447,7 +580,7 @@ class PlayerEngine(
                                 .setUri(freshStream.streamUrl)
                                 .setMimeType(freshStream.mimeType)
                                 .setMediaId(current.videoId)
-                                .setCustomCacheKey(current.videoId)
+                                .setCustomCacheKey("${current.videoId}_${freshStream.itag}")
                                 .setMediaMetadata(metadata)
                                 .build()
 
@@ -531,7 +664,7 @@ class PlayerEngine(
             if (cached != null) return@launch
 
             Log.d(TAG, "Pre-fetching stream for next track: ${nextSong.title} (${nextSong.videoId})")
-            val stream = innerTube.resolveStream(nextSong.videoId)
+            val stream = innerTube.resolveStream(nextSong.videoId, _preferredStreamingQuality.value)
             if (stream != null) {
                 database.cacheStream(stream)
                 Log.d(TAG, "Pre-fetch complete for ${nextSong.title}")
@@ -635,6 +768,7 @@ class PlayerEngine(
 
                 if (localFile != null && localFile.exists() && localFile.length() > 0) {
                     Log.d(TAG, "Playing ${song.title} from local download: ${localFile.absolutePath} at ${startPositionMs}ms")
+                    _activeQualityTier.value = AudioQualityTier.HIGH
                     val highResThumb = InnerTubeClient.getHighResThumbnailUrl(song.thumbnailUrl)
                     val metadata = MediaMetadata.Builder()
                         .setTitle(song.title)
@@ -646,7 +780,7 @@ class PlayerEngine(
                     val mediaItem = MediaItem.Builder()
                         .setUri(Uri.fromFile(localFile))
                         .setMediaId(song.videoId)
-                        .setCustomCacheKey(song.videoId)
+                        .setCustomCacheKey("${song.videoId}_local")
                         .setMediaMetadata(metadata)
                         .build()
 
@@ -673,7 +807,7 @@ class PlayerEngine(
 
                 // 2. Resolve via InnerTube if not cached
                 if (stream == null) {
-                    stream = innerTube.resolveStream(song.videoId)
+                    stream = innerTube.resolveStream(song.videoId, _preferredStreamingQuality.value)
                     if (stream != null) {
                         withContext(Dispatchers.IO) {
                             database.cacheStream(stream)
@@ -684,7 +818,25 @@ class PlayerEngine(
                 if (!isActive) return@launch
 
                 if (stream != null) {
-                    Log.d(TAG, "Playing ${song.title} from ${stream.streamUrl.take(60)}... (resuming at ${startPositionMs}ms)")
+                    // Determine initial streaming quality tier based on preferences & real-time network coverage
+                    val targetTier = when (_preferredStreamingQuality.value) {
+                        StreamQuality.AUTO -> networkCoverageMonitor.getRecommendedQualityTier()
+                        StreamQuality.HIGH -> AudioQualityTier.HIGH
+                        StreamQuality.MEDIUM -> AudioQualityTier.MEDIUM
+                        StreamQuality.LOW -> AudioQualityTier.LOW
+                        StreamQuality.VERY_LOW -> AudioQualityTier.VERY_LOW
+                    }
+
+                    val chosenStream = stream.getStreamForTier(targetTier)
+                    val allFallbacks = stream.getAllStreams().filter { it.itag != chosenStream.itag }
+                        .distinctBy { it.itag }
+                        .sortedByDescending { it.bitrate }
+
+                    val activePkg = chosenStream.copy(fallbackStreams = allFallbacks)
+                    _activeStream.value = activePkg
+                    _activeQualityTier.value = activePkg.qualityTier
+
+                    Log.d(TAG, "Playing ${song.title} with quality tier ${activePkg.qualityTier} (itag=${activePkg.itag}, ${activePkg.bitrate / 1000}kbps, network=${networkCoverageMonitor.coverageLevel.value.displayName}, fallbacks=${allFallbacks.size})")
 
                     val highResThumb = InnerTubeClient.getHighResThumbnailUrl(song.thumbnailUrl)
                     val metadata = MediaMetadata.Builder()
@@ -695,14 +847,14 @@ class PlayerEngine(
                         .build()
 
                     val mediaItem = MediaItem.Builder()
-                        .setUri(stream.streamUrl)
-                        .setMimeType(stream.mimeType)
+                        .setUri(activePkg.streamUrl)
+                        .setMimeType(activePkg.mimeType)
                         .setMediaId(song.videoId)
-                        .setCustomCacheKey(song.videoId)
+                        .setCustomCacheKey("${song.videoId}_${activePkg.itag}")
                         .setMediaMetadata(metadata)
                         .build()
 
-                    val dataSourceFactory = buildDataSourceFactory(stream.userAgent ?: InnerTubeClient.VISIONOS_USER_AGENT)
+                    val dataSourceFactory = buildDataSourceFactory(activePkg.userAgent ?: InnerTubeClient.VISIONOS_USER_AGENT)
                     val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
                         .createMediaSource(mediaItem)
 
@@ -852,6 +1004,15 @@ class PlayerEngine(
                 }
             }
             exoPlayer.play()
+        }
+    }
+
+    fun pause() {
+        if (exoPlayer.playWhenReady) {
+            exoPlayer.pause()
+            stopBufferingWatchdog()
+            releaseLocks()
+            _currentTrack.value?.let { savePlaybackState(it, _currentPositionMs.value, _queue.value, _queueIndex.value) }
         }
     }
 

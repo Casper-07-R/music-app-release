@@ -11,6 +11,26 @@ data class SongItem(
     val explicit: Boolean = false
 )
 
+enum class StreamQuality(
+    val id: String,
+    val displayName: String,
+    val description: String,
+    val badge: String? = null
+) {
+    AUTO("auto", "Auto (Adaptive with Fallback)", "High quality on strong network, auto-fallbacks on low coverage to prevent tearing", "RECOMMENDED"),
+    HIGH("high", "High Fidelity (160–256 kbps)", "Highest studio quality (Opus 160k / AAC 256k)", null),
+    MEDIUM("medium", "Medium (128 kbps)", "Balanced sound quality & data usage (AAC 128k)", null),
+    LOW("low", "Low / Resilient (65–70 kbps)", "Resilient streaming for weak signal (Opus 70k)", null),
+    VERY_LOW("very_low", "Data Saver (48–50 kbps)", "Ultra-low bandwidth stream for poor network & 2G coverage", null)
+}
+
+enum class AudioQualityTier(val priority: Int, val label: String) {
+    HIGH(4, "High (160–256 kbps)"),
+    MEDIUM(3, "Medium (128 kbps)"),
+    LOW(2, "Low (70 kbps)"),
+    VERY_LOW(1, "Data Saver (50 kbps)")
+}
+
 data class PlaybackStream(
     val videoId: String,
     val streamUrl: String,
@@ -21,8 +41,36 @@ data class PlaybackStream(
     val loudnessDb: Double? = null,
     val userAgent: String? = null,
     val clientName: String = "VISIONOS",
-    val contentLength: Long? = null
-)
+    val contentLength: Long? = null,
+    val fallbackStreams: List<PlaybackStream> = emptyList()
+) {
+    val qualityTier: AudioQualityTier
+        get() = when {
+            itag == 141 || (mimeType.contains("opus") && bitrate >= 130_000L) || bitrate >= 160_000L -> AudioQualityTier.HIGH
+            itag == 140 || (bitrate in 90_000L..159_999L) -> AudioQualityTier.MEDIUM
+            itag == 250 || (bitrate in 60_000L..89_999L) -> AudioQualityTier.LOW
+            else -> AudioQualityTier.VERY_LOW
+        }
+
+    fun getAllStreams(): List<PlaybackStream> {
+        val list = mutableListOf(this.copy(fallbackStreams = emptyList()))
+        list.addAll(fallbackStreams.map { it.copy(fallbackStreams = emptyList()) })
+        return list.distinctBy { it.itag }.sortedByDescending { it.bitrate }
+    }
+
+    fun getStreamForTier(tier: AudioQualityTier): PlaybackStream {
+        val all = getAllStreams()
+        return all.firstOrNull { it.qualityTier == tier }
+            ?: all.minByOrNull { kotlin.math.abs(it.qualityTier.priority - tier.priority) }
+            ?: this
+    }
+
+    fun getFallbackStream(): PlaybackStream? {
+        val all = getAllStreams()
+        val currentBitrate = this.bitrate
+        return all.filter { it.bitrate < currentBitrate }.maxByOrNull { it.bitrate }
+    }
+}
 
 data class NextResult(
     val items: List<SongItem>,

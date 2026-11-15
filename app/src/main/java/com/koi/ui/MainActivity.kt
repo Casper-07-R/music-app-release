@@ -1,15 +1,19 @@
 package com.koi.ui
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import androidx.activity.viewModels
 import androidx.activity.ComponentActivity
+import com.koi.KoiApplication
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -37,18 +41,26 @@ import androidx.compose.material.icons.Icons
 import com.koi.backend.player.BatteryOptimizationHelper
 import com.koi.backend.audio.AudioProfile
 import com.koi.backend.audio.SpatialMode
+import com.koi.backend.profile.UserProfileManager
 import com.koi.backend.update.UpdateUiState
 import com.koi.ui.components.AddSongsToPlaylistSheet
 import com.koi.ui.components.DownloadQualitySheet
+import com.koi.ui.components.StreamingQualitySheet
 import com.koi.ui.components.EditPlaylistDialog
 import com.koi.ui.components.EightDAudioStudioSheet
 import com.koi.ui.components.EightDProfileSelectorSheet
 import com.koi.ui.components.EqualizerProfilesSheet
+import com.koi.ui.components.GameMechanicsTutorialOverlay
+import com.koi.ui.components.TutorialTarget
 import com.koi.ui.components.InitialUsernameDialog
 import com.koi.ui.components.NowPlayingFullScreenSheet
 import com.koi.ui.components.NowPlayingMiniBar
 import com.koi.ui.components.SleepTimerSheet
 import com.koi.ui.components.UpdateAvailableDialog
+import androidx.compose.ui.geometry.Rect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.koi.ui.components.KoiBottomNavBar
 import com.koi.ui.model.NavigationTab
 import com.koi.ui.model.SearchHistoryType
@@ -64,6 +76,8 @@ import com.koi.ui.theme.*
 import com.koi.ui.viewmodel.PlaybackViewModel
 
 class MainActivity : ComponentActivity() {
+    private val playbackViewModel: PlaybackViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -84,8 +98,27 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             KoiTheme {
-                KoiApp()
+                KoiApp(viewModel = playbackViewModel)
             }
+        }
+
+        handleCustomIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleCustomIntent(intent)
+    }
+
+    private fun handleCustomIntent(intent: Intent?) {
+        if (intent == null) return
+        if (intent.getBooleanExtra("demo_update", false)) {
+            playbackViewModel.previewUpdateDialog()
+        }
+        if (intent.getBooleanExtra("demo_tutorial", false)) {
+            UserProfileManager.resetTutorial(this)
+            playbackViewModel.startOnboardingTutorial()
         }
     }
 }
@@ -102,7 +135,25 @@ fun KoiApp(
     val updateState by viewModel.updateState.collectAsState()
 
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val batteryPrefs = remember(context) { context.getSharedPreferences("koi_battery_prefs", android.content.Context.MODE_PRIVATE) }
+    var tutorialTargetBounds by remember { mutableStateOf(mapOf<TutorialTarget, Rect>()) }
+
+    // Every time the user opens a new session (app comes to foreground / cold start),
+    // reset dialog dismissed flag and check for updates so the walkthrough popup shows if not updated!
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) {
+                viewModel.onNewSessionStarted()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+
 
     LaunchedEffect(uiState.showInitialUsernameDialog) {
         if (!uiState.showInitialUsernameDialog) {
@@ -167,6 +218,8 @@ fun KoiApp(
                     dspConfig = dspConfig,
                     usageMetrics = usageMetrics,
                     sleepTimerRemainingSeconds = uiState.sleepTimerRemainingSeconds,
+                    streamingQuality = uiState.preferredStreamingQuality,
+                    onOpenStreamingQualitySheet = { viewModel.openStreamingQualitySheet() },
                     onBackClick = { viewModel.closeSettings() },
                     onSelectSpatialMode = { viewModel.setSpatialMode(it) },
                     onToggleMasterDsp = { viewModel.toggleMasterDsp() },
@@ -177,6 +230,8 @@ fun KoiApp(
                     onSetSleepTimer = { viewModel.setSleepTimer(it) },
                     onClearCacheClick = { viewModel.clearCache() },
                     onCheckForUpdate = { viewModel.checkForUpdate(isManual = true) },
+                    onPreviewUpdate = { viewModel.previewUpdateDialog() },
+                    onReplayTutorial = { viewModel.startOnboardingTutorial() },
                     onDownloadUpdate = { release, asset ->
                         viewModel.downloadUpdate(release, asset, currentContext)
                     },
@@ -299,12 +354,20 @@ fun KoiApp(
                             onOpenProfileSelector = { viewModel.openProfileSelectorSheet() },
                             onOpenSleepTimer = { viewModel.openSleepTimerDialog() },
                             onSelectStation = { station -> viewModel.playStation(station) },
-                            onPlaylistClick = { playlist -> viewModel.openPlaylist(playlist) },
+                            onPlaylistClick = { playlist ->
+                                if (!uiState.showOnboardingTutorial) {
+                                    viewModel.openPlaylist(playlist)
+                                }
+                            },
                             onSearchClick = { viewModel.selectTab(NavigationTab.SEARCH) },
                             onOpenDownloadManager = { viewModel.openDownloadManager() },
                             onProfileClick = { viewModel.selectTab(NavigationTab.PROFILE) },
                             onSettingsClick = { viewModel.openSettings() },
-                            onOpenFullScreen = { viewModel.openFullScreenPlayer() }
+                            onOpenFullScreen = { viewModel.openFullScreenPlayer() },
+                            onTargetPositioned = { target, rect ->
+                                tutorialTargetBounds = tutorialTargetBounds + (target to rect)
+                            },
+                            tutorialStep = if (uiState.showOnboardingTutorial) uiState.onboardingTutorialStep else null
                         )
                     }
                     NavigationTab.SEARCH -> {
@@ -415,7 +478,13 @@ fun KoiApp(
         ) {
             // Floating Now Playing Mini-Bar (Hidden on Home screen since Home has the Hero Audio Deck)
             val isHomeScreen = uiState.selectedTab == NavigationTab.HOME && uiState.selectedPlaylist == null && !uiState.showSettingsScreen
-            if (!isHomeScreen && !uiState.isFullScreenPlayerExpanded) {
+            val isMiniBarVisible = !isHomeScreen && !uiState.isFullScreenPlayerExpanded && !uiState.isMiniBarDismissed
+
+            AnimatedVisibility(
+                visible = isMiniBarVisible,
+                enter = fadeIn(animationSpec = tween(220)) + expandVertically(animationSpec = tween(220)),
+                exit = fadeOut(animationSpec = tween(180)) + shrinkVertically(animationSpec = tween(180))
+            ) {
                 val durationSecs = uiState.currentTrack.durationSeconds.toFloat().coerceAtLeast(1f)
                 val progressFraction = (uiState.currentPositionSeconds / durationSecs).coerceIn(0f, 1f)
 
@@ -427,6 +496,7 @@ fun KoiApp(
                     onPlayPauseClick = { viewModel.togglePlayPause() },
                     onLikeClick = { viewModel.toggleLike() },
                     onBarClick = { viewModel.openFullScreenPlayer() },
+                    onDismiss = { viewModel.dismissMiniBar() },
                     modifier = Modifier.padding(bottom = 6.dp)
                 )
             }
@@ -636,6 +706,19 @@ fun KoiApp(
                 onDismiss = { viewModel.closeDownloadOptionsSheet() },
                 onConfirmDownload = { format, quality ->
                     viewModel.confirmDownload(format, quality)
+                }
+            )
+        }
+
+        // Streaming Quality & Fallback Selection Modal Bottom Sheet
+        if (uiState.showStreamingQualitySheet) {
+            StreamingQualitySheet(
+                currentQuality = uiState.preferredStreamingQuality,
+                currentNetworkCoverage = uiState.networkCoverageLevel,
+                activeTier = uiState.activeStreamingTier,
+                onDismiss = { viewModel.closeStreamingQualitySheet() },
+                onConfirmQuality = { quality ->
+                    viewModel.setStreamingQuality(quality)
                 }
             )
         }
@@ -974,7 +1057,7 @@ fun KoiApp(
                 updateState is UpdateUiState.Downloading ||
                 updateState is UpdateUiState.ReadyToInstall
 
-        if (isUpdateActive && !uiState.isUpdateDialogDismissed && !uiState.showInitialUsernameDialog) {
+        if (isUpdateActive && !uiState.isUpdateDialogDismissed && !uiState.showInitialUsernameDialog && !uiState.showOnboardingTutorial) {
             UpdateAvailableDialog(
                 updateState = updateState,
                 onUpdate = { release, asset ->
@@ -989,6 +1072,20 @@ fun KoiApp(
                 onLater = {
                     viewModel.dismissUpdateDialog()
                 }
+            )
+        }
+
+        // Step-by-Step Game Mechanics Spotlight Walkthrough Tutorial
+        // Darkens the app and spotlights key features on first install or when replayed.
+        // Yields when user is interacting with modal sheets (such as SleepTimerSheet or Settings) so the user can interact cleanly!
+        if (uiState.showOnboardingTutorial && !uiState.showInitialUsernameDialog && !uiState.showSleepTimerDialog && !uiState.showSettingsScreen && !uiState.showStreamingQualitySheet) {
+            GameMechanicsTutorialOverlay(
+                currentStep = uiState.onboardingTutorialStep,
+                username = uiState.username,
+                targetBoundsMap = tutorialTargetBounds,
+                onNextStep = { viewModel.nextTutorialStep() },
+                onComplete = { viewModel.completeOnboardingTutorial() },
+                onSkip = { viewModel.completeOnboardingTutorial() }
             )
         }
     }

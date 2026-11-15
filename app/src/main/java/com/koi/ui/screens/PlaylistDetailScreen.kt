@@ -297,63 +297,34 @@ fun PlaylistDetailScreen(
                                         )
                                     }
                                 }
-                            } else {
-                                // Add Songs Button
+                            } else if (playlist.tracks.isNotEmpty()) {
+                                // Manage / Select Mode Button (Only when tracks exist)
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(20.dp))
-                                        .background(RogSurfaceHighlight)
-                                        .clickable { onAddSongsClick() }
+                                        .background(if (activeManageMode) RogGoldPrimary else RogSurfaceHighlight)
+                                        .clickable {
+                                            isManageMode = !isManageMode
+                                            selectedTrackIds.clear()
+                                        }
                                         .padding(horizontal = 14.dp, vertical = 8.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(
-                                            painter = painterResource(id = R.drawable.ic_plus),
-                                            contentDescription = "Add songs",
-                                            tint = RogTextGold,
+                                            painter = painterResource(id = if (activeManageMode) R.drawable.ic_close else R.drawable.ic_checklist),
+                                            contentDescription = if (activeManageMode) "Done" else "Manage songs",
+                                            tint = if (activeManageMode) RogObsidian else RogTextGold,
                                             modifier = Modifier.size(16.dp)
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = "Add songs",
+                                            text = if (activeManageMode) "Done" else "Manage",
                                             fontSize = 13.sp,
                                             fontFamily = CircularFontFamily,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = RogTextPrimary
+                                            color = if (activeManageMode) RogObsidian else RogTextPrimary
                                         )
-                                    }
-                                }
-
-                                // Manage / Select Mode Button (Only when tracks exist)
-                                if (playlist.tracks.isNotEmpty()) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(20.dp))
-                                            .background(if (activeManageMode) RogGoldPrimary else RogSurfaceHighlight)
-                                            .clickable {
-                                                isManageMode = !isManageMode
-                                                selectedTrackIds.clear()
-                                            }
-                                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                painter = painterResource(id = if (activeManageMode) R.drawable.ic_close else R.drawable.ic_checklist),
-                                                contentDescription = if (activeManageMode) "Done" else "Manage songs",
-                                                tint = if (activeManageMode) RogObsidian else RogTextGold,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = if (activeManageMode) "Done" else "Manage",
-                                                fontSize = 13.sp,
-                                                fontFamily = CircularFontFamily,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = if (activeManageMode) RogObsidian else RogTextPrimary
-                                            )
-                                        }
                                     }
                                 }
                             }

@@ -9,6 +9,7 @@ import com.koi.KoiApplication
 import com.koi.backend.audio.*
 import com.koi.backend.download.*
 import com.koi.backend.innertube.*
+import com.koi.backend.player.NetworkCoverageLevel
 import com.koi.backend.profile.UserProfileManager
 import com.koi.backend.update.AppUpdateManager
 import com.koi.backend.update.GitHubAsset
@@ -112,9 +113,16 @@ data class PlaybackUiState(
     val downloadOptionsTargetPlaylist: Playlist? = null,
     val preferredDownloadFormat: AudioFormat = AudioFormat.M4A,
     val preferredDownloadQuality: AudioQuality = AudioQuality.HIGH,
+    val preferredStreamingQuality: StreamQuality = StreamQuality.AUTO,
+    val activeStreamingTier: AudioQualityTier = AudioQualityTier.HIGH,
+    val showStreamingQualitySheet: Boolean = false,
+    val networkCoverageLevel: NetworkCoverageLevel = NetworkCoverageLevel.GOOD,
     val username: String = UserProfileManager.DEFAULT_USERNAME,
     val showInitialUsernameDialog: Boolean = false,
-    val isUpdateDialogDismissed: Boolean = false
+    val showOnboardingTutorial: Boolean = false,
+    val onboardingTutorialStep: Int = 0,
+    val isUpdateDialogDismissed: Boolean = false,
+    val isMiniBarDismissed: Boolean = false
 )
 
 class PlaybackViewModel : ViewModel() {
@@ -178,14 +186,20 @@ class PlaybackViewModel : ViewModel() {
     }
 
     private val _uiState = MutableStateFlow(
-        PlaybackUiState(
-            currentTrack = initialTrack,
-            currentPositionSeconds = playerEngine.currentPositionMs.value / 1000f,
-            categories = defaultCategories,
-            soundStations = defaultSoundStations,
-            username = UserProfileManager.getUsername(app),
-            showInitialUsernameDialog = UserProfileManager.shouldPromptInitialUsername(app)
-        )
+        run {
+            val promptUser = UserProfileManager.shouldPromptInitialUsername(app)
+            val showTutorial = UserProfileManager.shouldShowOnboardingTutorial(app)
+            PlaybackUiState(
+                currentTrack = initialTrack,
+                currentPositionSeconds = playerEngine.currentPositionMs.value / 1000f,
+                categories = defaultCategories,
+                soundStations = defaultSoundStations,
+                username = UserProfileManager.getUsername(app),
+                showInitialUsernameDialog = promptUser,
+                showOnboardingTutorial = showTutorial && !promptUser,
+                onboardingTutorialStep = 0
+            )
+        }
     )
     val uiState: StateFlow<PlaybackUiState> = _uiState.asStateFlow()
 
@@ -273,7 +287,8 @@ class PlaybackViewModel : ViewModel() {
                             ).copy(
                                 lyrics = matchingLyrics?.lines?.map { it.text } ?: emptyList()
                             ),
-                            isDownloaded = isDownloaded
+                            isDownloaded = isDownloaded,
+                            isMiniBarDismissed = false
                         )
                     }
                     if (_dspConfig.value.perTrackMemoryEnabled) {
@@ -315,7 +330,13 @@ class PlaybackViewModel : ViewModel() {
 
         viewModelScope.launch {
             playerEngine.isPlaying.collect { playing ->
-                _uiState.update { it.copy(isPlaying = playing) }
+                _uiState.update {
+                    if (playing && it.isMiniBarDismissed) {
+                        it.copy(isPlaying = playing, isMiniBarDismissed = false)
+                    } else {
+                        it.copy(isPlaying = playing)
+                    }
+                }
             }
         }
 
@@ -357,6 +378,24 @@ class PlaybackViewModel : ViewModel() {
         viewModelScope.launch {
             playerEngine.isFindingLyrics.collect { finding ->
                 _uiState.update { it.copy(isFindingLyrics = finding) }
+            }
+        }
+
+        viewModelScope.launch {
+            playerEngine.preferredStreamingQuality.collect { q ->
+                _uiState.update { it.copy(preferredStreamingQuality = q) }
+            }
+        }
+
+        viewModelScope.launch {
+            playerEngine.activeQualityTier.collect { tier ->
+                _uiState.update { it.copy(activeStreamingTier = tier) }
+            }
+        }
+
+        viewModelScope.launch {
+            playerEngine.networkCoverageMonitor.coverageLevel.collect { cov ->
+                _uiState.update { it.copy(networkCoverageLevel = cov) }
             }
         }
 
@@ -537,6 +576,7 @@ class PlaybackViewModel : ViewModel() {
     // --- PLAYBACK CONTROLS ---
 
     fun playTrack(track: Track, queue: List<Track> = emptyList(), startPositionMs: Long = 0L) {
+        _uiState.update { it.copy(isMiniBarDismissed = false) }
         val songItem = track.toSongItem()
         val queueItems = if (queue.isNotEmpty()) {
             queue.map { it.toSongItem() }
@@ -547,6 +587,7 @@ class PlaybackViewModel : ViewModel() {
     }
 
     fun togglePlayPause() {
+        _uiState.update { it.copy(isMiniBarDismissed = false) }
         if (playerEngine.currentTrack.value == null) {
             playTrack(_uiState.value.currentTrack)
         } else {
@@ -554,11 +595,22 @@ class PlaybackViewModel : ViewModel() {
         }
     }
 
+    fun pause() {
+        playerEngine.pause()
+    }
+
+    fun dismissMiniBar() {
+        playerEngine.pause()
+        _uiState.update { it.copy(isMiniBarDismissed = true) }
+    }
+
     fun skipNext() {
+        _uiState.update { it.copy(isMiniBarDismissed = false) }
         playerEngine.skipNext()
     }
 
     fun skipPrevious() {
+        _uiState.update { it.copy(isMiniBarDismissed = false) }
         playerEngine.skipPrevious()
     }
 
@@ -877,18 +929,63 @@ class PlaybackViewModel : ViewModel() {
         val cleanName = username.trim()
         val finalName = if (cleanName.isNotBlank()) cleanName else UserProfileManager.DEFAULT_USERNAME
         UserProfileManager.saveUsername(app, finalName)
+        val shouldShowTutorial = UserProfileManager.shouldShowOnboardingTutorial(app)
         _uiState.update {
             it.copy(
                 username = finalName,
-                showInitialUsernameDialog = false
+                showInitialUsernameDialog = false,
+                showOnboardingTutorial = shouldShowTutorial,
+                onboardingTutorialStep = 0
             )
         }
     }
 
     fun skipInitialUsername() {
         UserProfileManager.markPromptCompleted(app)
+        val shouldShowTutorial = UserProfileManager.shouldShowOnboardingTutorial(app)
         _uiState.update {
-            it.copy(showInitialUsernameDialog = false)
+            it.copy(
+                showInitialUsernameDialog = false,
+                showOnboardingTutorial = shouldShowTutorial,
+                onboardingTutorialStep = 0
+            )
+        }
+    }
+
+    fun nextTutorialStep() {
+        val current = _uiState.value.onboardingTutorialStep
+        if (current < 5) {
+            _uiState.update { it.copy(onboardingTutorialStep = current + 1) }
+        } else {
+            completeOnboardingTutorial()
+        }
+    }
+
+    fun completeOnboardingTutorial() {
+        UserProfileManager.markTutorialCompleted(app)
+        _uiState.update {
+            it.copy(
+                showOnboardingTutorial = false,
+                onboardingTutorialStep = 0
+            )
+        }
+    }
+
+    fun startOnboardingTutorial() {
+        _uiState.update {
+            it.copy(
+                showOnboardingTutorial = true,
+                onboardingTutorialStep = 0,
+                showSettingsScreen = false,
+                isFullScreenPlayerExpanded = false,
+                selectedPlaylist = null,
+                showDownloadManager = false,
+                showSleepTimerDialog = false,
+                showEqualizerSheet = false,
+                showEightDStudioSheet = false,
+                showProfileSelectorSheet = false,
+                showAddSongsSheet = false
+            )
         }
     }
 
@@ -1045,7 +1142,7 @@ class PlaybackViewModel : ViewModel() {
     // --- UI NAVIGATION ---
 
     fun openFullScreenPlayer() {
-        _uiState.update { it.copy(isFullScreenPlayerExpanded = true) }
+        _uiState.update { it.copy(isFullScreenPlayerExpanded = true, isMiniBarDismissed = false) }
     }
 
     fun closeFullScreenPlayer() {
@@ -1746,6 +1843,19 @@ class PlaybackViewModel : ViewModel() {
         }
     }
 
+    fun openStreamingQualitySheet() {
+        _uiState.update { it.copy(showStreamingQualitySheet = true) }
+    }
+
+    fun closeStreamingQualitySheet() {
+        _uiState.update { it.copy(showStreamingQualitySheet = false) }
+    }
+
+    fun setStreamingQuality(quality: StreamQuality) {
+        playerEngine.setStreamingQuality(quality)
+        _uiState.update { it.copy(preferredStreamingQuality = quality) }
+    }
+
     fun requestDownloadTrack(track: Track) {
         if (_uiState.value.downloadedSongIds.contains(track.id) && database.isDownloaded(track.id)) {
             deleteDownloadedSong(track)
@@ -2076,11 +2186,26 @@ class PlaybackViewModel : ViewModel() {
 
     val updateState: StateFlow<UpdateUiState> = app.updateManager.state
 
+    /**
+     * Called whenever a new session starts (cold start or returning from background).
+     * Resets dismiss flag so that if an update is available, the walkthrough popup
+     * is shown every time the user opens a new session until the app is updated.
+     */
+    fun onNewSessionStarted() {
+        _uiState.update { it.copy(isUpdateDialogDismissed = false) }
+        checkForUpdate()
+    }
+
     fun checkForUpdate(isManual: Boolean = false) {
         if (isManual) {
             _uiState.update { it.copy(isUpdateDialogDismissed = false) }
         }
-        app.updateManager.checkForUpdate()
+        app.updateManager.checkForUpdate(isManual)
+    }
+
+    fun previewUpdateDialog() {
+        _uiState.update { it.copy(isUpdateDialogDismissed = false) }
+        app.updateManager.previewUpdate()
     }
 
     fun dismissUpdateDialog() {

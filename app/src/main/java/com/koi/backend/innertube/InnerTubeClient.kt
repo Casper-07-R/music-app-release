@@ -738,7 +738,10 @@ class InnerTubeClient(
      * Evaluates formats using perceptual audio quality scoring and the Ryotunes HIGH two-pass strategy.
      * Includes stream probing (validateStream) and anti-bot gate auto-recovery with fresh visitorData.
      */
-    suspend fun resolveStream(videoId: String): PlaybackStream? = withContext(Dispatchers.IO) {
+    suspend fun resolveStream(
+        videoId: String,
+        preferredQuality: StreamQuality = StreamQuality.AUTO
+    ): PlaybackStream? = withContext(Dispatchers.IO) {
         var vd = getVisitorData()
         var bestCandidate: PlaybackStream? = null
         var bestScore = -1L
@@ -754,15 +757,15 @@ class InnerTubeClient(
                 // Optimal tier threshold: Opus 160kbps+ (itag 251) or AAC 256kbps+ (itag 141) has score >= 22,200,000L.
                 // When reached, this is the maximum possible audio quality YouTube encodes.
                 if (bestScore >= 22_200_000L) {
-                    Log.d(TAG, "Locked in optimal high-fidelity stream for $videoId with ${stream.clientName} (itag=${stream.itag}, ${stream.bitrate / 1000}kbps, mime=${stream.mimeType})")
-                    return@withContext bestCandidate
+                    Log.d(TAG, "Locked in optimal high-fidelity stream for $videoId with ${stream.clientName} (itag=${stream.itag}, ${stream.bitrate / 1000}kbps, mime=${stream.mimeType}, fallbacks=${stream.fallbackStreams.size})")
+                    return@withContext applyPreferredQuality(bestCandidate, preferredQuality)
                 }
             }
         }
 
         if (bestCandidate != null) {
-            Log.d(TAG, "Resolved best available stream for $videoId with ${bestCandidate.clientName} (itag=${bestCandidate.itag}, ${bestCandidate.bitrate / 1000}kbps)")
-            return@withContext bestCandidate
+            Log.d(TAG, "Resolved best available stream for $videoId with ${bestCandidate.clientName} (itag=${bestCandidate.itag}, ${bestCandidate.bitrate / 1000}kbps, fallbacks=${bestCandidate.fallbackStreams.size})")
+            return@withContext applyPreferredQuality(bestCandidate, preferredQuality)
         }
 
         // Anti-bot gate auto-recovery: if all clients failed, refresh visitorData and retry chain
@@ -777,17 +780,36 @@ class InnerTubeClient(
                     bestCandidate = stream
                 }
                 if (bestScore >= 22_200_000L) {
-                    return@withContext bestCandidate
+                    return@withContext applyPreferredQuality(bestCandidate, preferredQuality)
                 }
             }
         }
 
         if (bestCandidate != null) {
-            Log.d(TAG, "Resolved best available stream after refresh for $videoId with ${bestCandidate.clientName}")
+            Log.d(TAG, "Resolved best available stream after refresh for $videoId with ${bestCandidate.clientName} (fallbacks=${bestCandidate.fallbackStreams.size})")
         } else {
             Log.e(TAG, "Failed to resolve playable stream with any client for $videoId")
         }
-        bestCandidate
+        applyPreferredQuality(bestCandidate, preferredQuality)
+    }
+
+    private fun applyPreferredQuality(
+        candidate: PlaybackStream?,
+        preferredQuality: StreamQuality
+    ): PlaybackStream? {
+        if (candidate == null) return null
+        if (preferredQuality == StreamQuality.AUTO || preferredQuality == StreamQuality.HIGH) {
+            return candidate
+        }
+        val targetTier = when (preferredQuality) {
+            StreamQuality.MEDIUM -> AudioQualityTier.MEDIUM
+            StreamQuality.LOW -> AudioQualityTier.LOW
+            StreamQuality.VERY_LOW -> AudioQualityTier.VERY_LOW
+            else -> AudioQualityTier.HIGH
+        }
+        val selected = candidate.getStreamForTier(targetTier)
+        val remaining = candidate.getAllStreams().filter { it.itag != selected.itag }
+        return selected.copy(fallbackStreams = remaining)
     }
 
     /**
@@ -914,7 +936,8 @@ class InnerTubeClient(
         audioCandidates.sortByDescending { it.first }
 
         // Probe starting from the best candidate format down
-        for ((score, format) in audioCandidates) {
+        for (i in audioCandidates.indices) {
+            val (score, format) = audioCandidates[i]
             val url = format.get("url")?.asString ?: continue
             val itag = format.get("itag")?.asInt ?: 0
             val mimeType = format.get("mimeType")?.asString ?: "audio/webm"
@@ -923,6 +946,32 @@ class InnerTubeClient(
             // Validate stream via lightweight probe matching Ryotunes validate_head
             if (validateStream(url, client.userAgent)) {
                 Log.d(TAG, "Validated stream: itag=$itag, ${bitrate / 1000}kbps, mime=$mimeType (score=$score) on ${client.key}")
+
+                // Collect remaining valid candidates as fallback streams
+                val fallbacks = mutableListOf<PlaybackStream>()
+                for (j in audioCandidates.indices) {
+                    if (j == i) continue
+                    val (_, f) = audioCandidates[j]
+                    val fUrl = f.get("url")?.asString ?: continue
+                    val fItag = f.get("itag")?.asInt ?: 0
+                    val fMime = f.get("mimeType")?.asString ?: "audio/webm"
+                    val fBitrate = f.get("bitrate")?.asLong ?: 128000L
+                    fallbacks.add(
+                        PlaybackStream(
+                            videoId = videoId,
+                            streamUrl = fUrl,
+                            itag = fItag,
+                            mimeType = fMime,
+                            bitrate = fBitrate,
+                            expiresInSeconds = expiresInSeconds,
+                            loudnessDb = loudnessDb,
+                            userAgent = client.userAgent,
+                            clientName = client.key,
+                            contentLength = f.get("contentLength")?.asString?.toLongOrNull()
+                        )
+                    )
+                }
+
                 val stream = PlaybackStream(
                     videoId = videoId,
                     streamUrl = url,
@@ -933,7 +982,8 @@ class InnerTubeClient(
                     loudnessDb = loudnessDb,
                     userAgent = client.userAgent,
                     clientName = client.key,
-                    contentLength = format.get("contentLength")?.asString?.toLongOrNull()
+                    contentLength = format.get("contentLength")?.asString?.toLongOrNull(),
+                    fallbackStreams = fallbacks.distinctBy { it.itag }.sortedByDescending { it.bitrate }
                 )
                 return stream to score
             } else {

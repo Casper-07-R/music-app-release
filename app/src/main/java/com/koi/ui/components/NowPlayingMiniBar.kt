@@ -1,7 +1,15 @@
 package com.koi.ui.components
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -11,23 +19,32 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.koi.ui.R
 import com.koi.ui.model.Track
 import com.koi.ui.theme.*
+import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Material 3 Expressive Floating Now Playing Card.
+ * Can be slid to the sides (left or right) to dismiss.
  */
 @Composable
 fun NowPlayingMiniBar(
@@ -38,11 +55,87 @@ fun NowPlayingMiniBar(
     onPlayPauseClick: () -> Unit,
     onLikeClick: () -> Unit,
     onBarClick: () -> Unit,
+    onDismiss: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
+    var cardWidthPx by remember { mutableFloatStateOf(0f) }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    val animOffset = remember { Animatable(0f) }
+    var isAnimating by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(track.id) {
+        dragOffset = 0f
+        animOffset.snapTo(0f)
+        isAnimating = false
+    }
+
+    val currentOffset = if (isAnimating) animOffset.value else dragOffset
+    val effectiveWidth = if (cardWidthPx > 0f) cardWidthPx else screenWidthPx
+
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .onSizeChanged { size -> cardWidthPx = size.width.toFloat() }
+            .then(
+                if (onDismiss != null) {
+                    Modifier
+                        .offset { IntOffset(currentOffset.roundToInt(), 0) }
+                        .graphicsLayer {
+                            val progress = (abs(currentOffset) / (effectiveWidth * 0.75f)).coerceIn(0f, 1f)
+                            alpha = (1f - progress).coerceIn(0f, 1f)
+                        }
+                        .draggable(
+                            orientation = Orientation.Horizontal,
+                            state = rememberDraggableState { delta ->
+                                if (!isAnimating) {
+                                    dragOffset += delta
+                                }
+                            },
+                            onDragStarted = {
+                                isAnimating = false
+                            },
+                            onDragStopped = { velocity ->
+                                val dismissThreshold = effectiveWidth * 0.28f
+                                val velocityThreshold = 800f
+
+                                val shouldDismissRight = (dragOffset > dismissThreshold && velocity > -400f) || velocity > velocityThreshold
+                                val shouldDismissLeft = (dragOffset < -dismissThreshold && velocity < 400f) || velocity < -velocityThreshold
+
+                                coroutineScope.launch {
+                                    isAnimating = true
+                                    animOffset.snapTo(dragOffset)
+                                    if (shouldDismissRight) {
+                                        animOffset.animateTo(
+                                            targetValue = effectiveWidth * 1.25f,
+                                            animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
+                                        )
+                                        onDismiss()
+                                    } else if (shouldDismissLeft) {
+                                        animOffset.animateTo(
+                                            targetValue = -effectiveWidth * 1.25f,
+                                            animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
+                                        )
+                                        onDismiss()
+                                    } else {
+                                        animOffset.animateTo(
+                                            targetValue = 0f,
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                stiffness = Spring.StiffnessMediumLow
+                                            )
+                                        )
+                                        dragOffset = 0f
+                                        isAnimating = false
+                                    }
+                                }
+                            }
+                        )
+                } else Modifier
+            )
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .clip(RoundedCornerShape(22.dp))
             .clickable { onBarClick() }

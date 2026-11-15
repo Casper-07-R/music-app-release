@@ -2,6 +2,7 @@ package com.koi.ui.screens
 
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -11,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Bedtime
@@ -36,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import com.koi.backend.audio.AudioDspConfig
 import com.koi.backend.audio.AudioProfile
 import com.koi.backend.audio.SpatialMode
+import com.koi.backend.innertube.StreamQuality
 import com.koi.backend.update.GitHubAsset
 import com.koi.backend.update.GitHubRelease
 import com.koi.backend.update.UpdateUiState
@@ -59,8 +62,12 @@ fun SettingsScreen(
     onOpenProfileSelector: () -> Unit,
     onResetProfile: (AudioProfile) -> Unit = {},
     onSetSleepTimer: (Int) -> Unit,
+    streamingQuality: StreamQuality = StreamQuality.AUTO,
+    onOpenStreamingQualitySheet: () -> Unit = {},
     onClearCacheClick: () -> Unit,
     onCheckForUpdate: () -> Unit,
+    onPreviewUpdate: () -> Unit = {},
+    onReplayTutorial: () -> Unit = {},
     onDownloadUpdate: (GitHubRelease, GitHubAsset) -> Unit,
     onCancelDownload: () -> Unit,
     onInstallUpdate: (File) -> Unit,
@@ -549,25 +556,31 @@ fun SettingsScreen(
                     HorizontalDivider(color = RogDivider)
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Streaming Quality
+                    // Streaming Quality & Fallback
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onOpenStreamingQualitySheet() }
+                            .padding(vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                             Text(
-                                text = "Streaming Quality",
+                                text = "Streaming Quality & Fallback",
                                 fontSize = 14.sp,
                                 fontFamily = CircularFontFamily,
                                 fontWeight = FontWeight.SemiBold,
                                 color = RogTextPrimary
                             )
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Lossless Opus / High-bitrate audio stream",
+                                text = streamingQuality.description,
                                 fontSize = 11.5.sp,
                                 fontFamily = CircularFontFamily,
-                                color = RogTextSecondary
+                                color = RogTextSecondary,
+                                maxLines = 2
                             )
                         }
 
@@ -575,14 +588,14 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(RogSurfaceHighlight)
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                .padding(horizontal = 10.dp, vertical = 5.dp)
                         ) {
                             Text(
-                                text = "High (256 kbps)",
+                                text = streamingQuality.displayName,
                                 fontSize = 11.5.sp,
                                 fontFamily = CircularFontFamily,
                                 color = RogTextGold,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
                     }
@@ -1216,6 +1229,60 @@ fun SettingsScreen(
                                 }
                             }
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedButton(
+                        onClick = onPreviewUpdate,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(40.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, RogDivider),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = RogTextGold)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = RogGoldPrimary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Preview What's New Walkthrough",
+                            fontSize = 12.5.sp,
+                            fontFamily = CircularFontFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            color = RogTextGold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = onReplayTutorial,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(40.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, RogDivider),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = RogTextPrimary)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = RogTextGold,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "🎮 Replay Game Mechanics Tutorial",
+                            fontSize = 12.5.sp,
+                            fontFamily = CircularFontFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            color = RogTextPrimary
+                        )
                     }
                 }
             }

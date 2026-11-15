@@ -83,13 +83,23 @@ class AppUpdateManager(
 
     private val updateScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var downloadJob: Job? = null
+    var isPreviewMode: Boolean = false
+        private set
 
     val currentVersion: String = overrideCurrentVersion ?: resolveCurrentVersionName(appContext)
 
     private val _state = MutableStateFlow<UpdateUiState>(UpdateUiState.Idle(currentVersion))
     val state: StateFlow<UpdateUiState> = _state.asStateFlow()
 
-    fun checkForUpdate() {
+    fun checkForUpdate(isManual: Boolean = false) {
+        if (isManual) {
+            isPreviewMode = false
+        }
+        if (isPreviewMode && _state.value is UpdateUiState.UpdateAvailable) {
+            // Keep preview update state active during preview sessions
+            return
+        }
+
         val currentState = _state.value
         if (currentState is UpdateUiState.Checking || currentState is UpdateUiState.Downloading) {
             return
@@ -183,6 +193,45 @@ class AppUpdateManager(
                 )
             }
         }
+    }
+
+    /**
+     * Activates a demo of the UpdateAvailable dialog using real GitHub release details.
+     */
+    fun previewUpdate() {
+        isPreviewMode = true
+        val release = GitHubRelease(
+            id = 201,
+            tagName = "v1.2.1",
+            name = "Koi v1.2.1 - Adaptive Audio & Fallback Streaming",
+            body = """
+                ### Added Features
+                * Adaptive Audio Quality & Zero-Buffering Streaming
+                * Interactive Game Mechanics Onboarding Tutorial
+                * Swipe to Dismiss Mini-Player
+                
+                ### Bug Fixes
+                * Fixed startup NullPointerException in PlayerEngine
+                * Optimized network coverage detection
+            """.trimIndent(),
+            publishedAt = "2026-11-15T08:00:00Z",
+            htmlUrl = "https://github.com/Casper-07-R/music-app-release/releases/tag/v1.2.1",
+            assets = listOf(
+                GitHubAsset(
+                    id = 999,
+                    name = "Koi-v1.2.1.apk",
+                    size = 18_800_000L,
+                    contentType = "application/vnd.android.package-archive",
+                    browserDownloadUrl = "https://github.com/Casper-07-R/music-app-release/releases/download/v1.2.1/Koi-v1.2.1.apk"
+                )
+            )
+        )
+        val apkAsset = release.assets.first()
+        _state.value = UpdateUiState.UpdateAvailable(
+            currentVersion = "1.2.0",
+            release = release,
+            apkAsset = apkAsset
+        )
     }
 
     fun downloadUpdate(release: GitHubRelease, apkAsset: GitHubAsset, context: Context = appContext) {

@@ -58,9 +58,6 @@ temp/
 # ==========================================
 # Test Files & Test Outputs
 # ==========================================
-app/src/test/
-**/test/
-*Test.kt
 **/test-results/
 **/reports/tests/
 test-results/

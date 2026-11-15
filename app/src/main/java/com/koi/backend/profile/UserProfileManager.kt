@@ -11,6 +11,7 @@ object UserProfileManager {
     const val PREFS_NAME = "koi_user_profile"
     const val KEY_USERNAME = "profile_username"
     const val KEY_HAS_PROMPTED = "has_prompted_initial_username"
+    const val KEY_HAS_COMPLETED_TUTORIAL = "has_completed_onboarding_tutorial"
     const val DEFAULT_USERNAME = "Casper"
 
     /**
@@ -32,6 +33,39 @@ object UserProfileManager {
         }
 
         return true
+    }
+
+    /**
+     * Determines whether the app should launch the step-by-step game mechanics tutorial.
+     * Triggers right after installation on first open, and strictly skips on app updates.
+     */
+    fun shouldShowOnboardingTutorial(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_HAS_COMPLETED_TUTORIAL, false)) {
+            return false
+        }
+
+        // App updates do not show clean installation tutorial
+        if (isAppUpdate(context)) {
+            markTutorialCompleted(context)
+            return false
+        }
+
+        return true
+    }
+
+    fun markTutorialCompleted(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putBoolean(KEY_HAS_COMPLETED_TUTORIAL, true)
+            .apply()
+    }
+
+    fun resetTutorial(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putBoolean(KEY_HAS_COMPLETED_TUTORIAL, false)
+            .apply()
     }
 
     /**

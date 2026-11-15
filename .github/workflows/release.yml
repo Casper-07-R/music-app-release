@@ -26,19 +26,16 @@ jobs:
           body: |
             ## Koi ${{ github.ref_name }} 🎏
 
-            ### 🎚️ 10-Band Graphic Equalizer (PipeWire bq_peaking from EQ-Clone)
-            * **10-Band Precision Filter Chain**: Peaking biquad EQ chain ported from PipeWire with exact frequencies (31Hz, 63Hz, 125Hz, 250Hz, 500Hz, 1kHz, 2kHz, 4kHz, 8kHz, 16kHz with Q=1.41).
-            * **EQ Presets**: Instant presets for Flat, Bass, Treble, Vocal, Pop, Rock, Jazz, Classic, Nightcore, and Slowed + Reverbed.
-            * **Interactive Fader Sliders**: Studio-grade slider controls with real-time dB gain readouts (-12 dB to +12 dB) and master bypass toggle.
-            * **Player & Settings Integration**: Dedicated Equalizer button in the music player interface; Reset option cleanly organized in Settings.
+            ### 📶 Adaptive Audio Quality & Zero-Buffering Streaming
+            * **Multi-Tier Audio Fallback**: Comprehensive audio format ladder with seamless degradation across High (Opus 160k / AAC 128k), Medium (Opus 70k), Low (Opus 50k), and Very Low / Data Saver (AAC 48k).
+            * **Real-time Network Coverage Monitor**: Dynamically tracks link bandwidth, cellular generation (2G, 3G, 4G, 5G), and Wi-Fi signal to adapt playback bitrates before buffering occurs.
+            * **Dynamic Stall Watchdog**: Automatically transitions to lower bitrate streams if buffering persists (>2.5s) or recurs, eliminating audio tearing on weak or unstable signals.
+            * **Custom Streaming Preferences**: Interactive ROG-styled Streaming Quality sheet in Settings to select Auto, High, Medium, Low, or Data Saver modes.
 
-            ### 🌌 8D & 16D Spatial Audio Harmonization & Stacking
-            * **Seamless Stacking**: Full multi-layer DSP support allowing Equalizer presets and custom curves to stack seamlessly with 8D and 16D spatial panning without state resets.
-            * **Phase-Synced 16D Audio**: Multi-dimensional Lissajous figure-8 orbit ($x = \sin\theta, y = \sin 2\theta$) with front-to-back elevation cueing and seamless horizontal phase synchronization with 8D.
-            * **Expanded Panning Floor**: Lowered minimum audio floor on the opposite ear from 15% to 10% for deeper, richer spatial panning.
-            * **Nightcore & Slowed Re-architecture**: Converted Nightcore and Slowed+Reverbed into pure EQ profiles without forced spatial panning.
+            ### 🎮 Interactive Game Mechanics Onboarding Tutorial
+            * **Cinematic Spotlight Walkthrough**: Complete HUD quest-driven walkthrough introducing 360° audio & 10-band EQ, sound stations, private vault, adaptive streaming quality, and gentle bedtime timers.
+            * **Replay Support**: Replay the onboarding tutorial anytime from Settings -> Replay Game Mechanics Tutorial.
 
-            ### 📱 UX & Interaction Refinements
-            * **Tap-Outside Scrim Dismiss**: Bottom sheets (Equalizer, 8D Studio, Profile Selector, and Sleep Timer) now dismiss instantly when tapping outside.
-            * **Smooth Back-Stack Navigation**: Refined back handlers across all screens and sheets.
-            * Refined back-stack navigation handling nested artist and album transitions smoothly.
+            ### 🖐️ Gesture & Stability Refinements
+            * **Swipe-to-Dismiss Mini-Player**: Swipe the floating Now Playing bar horizontally left or right to dismiss it cleanly.
+            * **Crash Prevention**: Resolved startup initialization order race condition in PlayerEngine.

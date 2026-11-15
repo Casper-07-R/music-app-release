@@ -5,6 +5,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.koi.backend.innertube.ArtistItem
 import com.koi.backend.innertube.PlaybackStream
 import com.koi.backend.innertube.PlaylistItem
@@ -197,6 +198,15 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
         } catch (_: Exception) {}
         try {
             db.execSQL("ALTER TABLE stream_url_cache ADD COLUMN client_name TEXT;")
+        } catch (_: Exception) {}
+        try {
+            db.execSQL("ALTER TABLE stream_url_cache ADD COLUMN fallbacks_json TEXT;")
+        } catch (_: Exception) {}
+        try {
+            db.execSQL("ALTER TABLE stream_url_cache ADD COLUMN mime_type TEXT;")
+        } catch (_: Exception) {}
+        try {
+            db.execSQL("ALTER TABLE stream_url_cache ADD COLUMN bitrate INTEGER DEFAULT 0;")
         } catch (_: Exception) {}
         try {
             db.execSQL("ALTER TABLE local_playlists ADD COLUMN description TEXT;")
@@ -579,7 +589,7 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
         val now = System.currentTimeMillis() / 1000
         val db = readableDatabase
         val cursor = db.rawQuery(
-            "SELECT url, itag, expires_at, loudness_db, user_agent, client_name FROM stream_url_cache WHERE video_id = ? AND expires_at > ?",
+            "SELECT url, itag, expires_at, loudness_db, user_agent, client_name, fallbacks_json, mime_type, bitrate FROM stream_url_cache WHERE video_id = ? AND expires_at > ?",
             arrayOf(videoId, now.toString())
         )
         var stream: PlaybackStream? = null
@@ -590,19 +600,44 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
             val loudnessDb = if (cursor.isNull(3)) null else cursor.getDouble(3)
             val userAgent = if (cursor.columnCount > 4 && !cursor.isNull(4)) cursor.getString(4) else null
             val clientName = if (cursor.columnCount > 5 && !cursor.isNull(5)) cursor.getString(5) else null
-            // Quality gate: Only serve cached streams if they are top-tier formats (itag 251 Opus 160k+ or itag 141 AAC 256k)
-            // Any lower-bitrate format forces a fresh online resolution to guarantee the best quality
-            if (itag == 251 || itag == 141) {
+            val fallbacksJson = if (cursor.columnCount > 6 && !cursor.isNull(6)) cursor.getString(6) else null
+            val cachedMime = if (cursor.columnCount > 7 && !cursor.isNull(7)) cursor.getString(7) else null
+            val cachedBitrate = if (cursor.columnCount > 8 && !cursor.isNull(8)) cursor.getLong(8) else 0L
+
+            val fallbacks: List<PlaybackStream> = if (!fallbacksJson.isNullOrEmpty()) {
+                try {
+                    val type = object : TypeToken<List<PlaybackStream>>() {}.type
+                    gson.fromJson(fallbacksJson, type) ?: emptyList()
+                } catch (e: Exception) {
+                    emptyList()
+                }
+            } else {
+                emptyList()
+            }
+
+            // Accept any valid YouTube audio stream (251, 141, 140, 250, 249, 139) or any entry with fallbacks
+            if (itag in listOf(251, 141, 140, 250, 249, 139) || fallbacks.isNotEmpty()) {
+                val resolvedMime = cachedMime ?: if (itag in listOf(251, 250, 249)) "audio/webm" else "audio/mp4"
+                val resolvedBitrate = if (cachedBitrate > 0L) cachedBitrate else when (itag) {
+                    141 -> 256000L
+                    251 -> 160000L
+                    140 -> 128000L
+                    250 -> 70000L
+                    249 -> 50000L
+                    139 -> 48000L
+                    else -> 128000L
+                }
                 stream = PlaybackStream(
                     videoId = videoId,
                     streamUrl = url,
                     itag = itag,
-                    mimeType = if (itag == 251) "audio/webm" else "audio/mp4",
-                    bitrate = if (itag == 251) 160000L else 256000L,
+                    mimeType = resolvedMime,
+                    bitrate = resolvedBitrate,
                     expiresInSeconds = expiresAt - now,
                     loudnessDb = loudnessDb,
                     userAgent = userAgent,
-                    clientName = clientName ?: "VISIONOS"
+                    clientName = clientName ?: "VISIONOS",
+                    fallbackStreams = fallbacks
                 )
             }
         }
@@ -622,6 +657,11 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
             put("loudness_db", stream.loudnessDb)
             put("user_agent", stream.userAgent)
             put("client_name", stream.clientName)
+            put("mime_type", stream.mimeType)
+            put("bitrate", stream.bitrate)
+            if (stream.fallbackStreams.isNotEmpty()) {
+                put("fallbacks_json", gson.toJson(stream.fallbackStreams))
+            }
         }
         db.insertWithOnConflict("stream_url_cache", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
     }
