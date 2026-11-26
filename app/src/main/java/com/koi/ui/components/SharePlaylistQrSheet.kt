@@ -65,7 +65,8 @@ fun SharePlaylistQrSheet(
             playlistDescription = playlist.description,
             coverUrl = playlist.thumbnailUrl,
             songs = playlist.tracks.map { it.toSongItem() },
-            theme = selectedTheme
+            theme = selectedTheme,
+            context = context
         )
     }
 
@@ -238,7 +239,7 @@ fun SharePlaylistQrSheet(
                             bitmap = result.shareCardBitmap.asImageBitmap(),
                             contentDescription = "Koi Playlist QR Card Version 40",
                             contentScale = ContentScale.Fit,
-                            filterQuality = FilterQuality.None,
+                            filterQuality = FilterQuality.High,
                             modifier = Modifier.fillMaxSize()
                         )
                     }

@@ -40,16 +40,20 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.coroutines.resume
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 /**
- * Koi-themed visual palettes for Version 40 QR rendering.
- * Module gradient stops intentionally preserve strong luminance contrast against [qrBg]
- * so dense 177x177 Version 40 QR codes remain fast and reliable to scan.
+ * Koi-themed visual palettes & paired high-detail Koi Pond artworks for Version 40 QR rendering.
+ * Module dark/finder stops preserve strong luminance contrast against light water regions so
+ * dense 177x177 Version 40 QR codes remain fast and reliable to scan even after social compression.
  */
 enum class KoiQrTheme(
     val label: String,
+    val artAssetPath: String,
     val cardTopColor: Int,
     val cardMidColor: Int,
     val cardBottomColor: Int,
@@ -66,6 +70,7 @@ enum class KoiQrTheme(
 ) {
     KOI_POND(
         label = "Koi Pond",
+        artAssetPath = "qr_art/koi_pond.jpg",
         cardTopColor = 0xFF031015.toInt(),
         cardMidColor = 0xFF0A2732.toInt(),
         cardBottomColor = 0xFF061B23.toInt(),
@@ -76,12 +81,13 @@ enum class KoiQrTheme(
         moduleGradStart = 0xFFB03009.toInt(),
         moduleGradMid = 0xFF0A3440.toInt(),
         moduleGradEnd = 0xFF00557A.toInt(),
-        finderOuterColor = 0xFF072833.toInt(),
-        finderInnerPrimary = 0xFFC43408.toInt(),
-        finderInnerSecondary = 0xFF006490.toInt()
+        finderOuterColor = 0xFF04222E.toInt(),
+        finderInnerPrimary = 0xFF8C1E04.toInt(),
+        finderInnerSecondary = 0xFF003B59.toInt()
     ),
     KOHAKU_SUNSET(
         label = "Kohaku Gold",
+        artAssetPath = "qr_art/kohaku_gold.jpg",
         cardTopColor = 0xFF150806.toInt(),
         cardMidColor = 0xFF2B120C.toInt(),
         cardBottomColor = 0xFF120705.toInt(),
@@ -92,12 +98,13 @@ enum class KoiQrTheme(
         moduleGradStart = 0xFF991B14.toInt(),
         moduleGradMid = 0xFFB03608.toInt(),
         moduleGradEnd = 0xFF471810.toInt(),
-        finderOuterColor = 0xFF380F09.toInt(),
-        finderInnerPrimary = 0xFFC83D0A.toInt(),
-        finderInnerSecondary = 0xFF9E3A00.toInt()
+        finderOuterColor = 0xFF2B0C05.toInt(),
+        finderInnerPrimary = 0xFF8C1D04.toInt(),
+        finderInnerSecondary = 0xFF5E2F00.toInt()
     ),
     LOTUS_CYAN(
         label = "Lotus Cyan",
+        artAssetPath = "qr_art/lotus_cyan.jpg",
         cardTopColor = 0xFF04101A.toInt(),
         cardMidColor = 0xFF0A283A.toInt(),
         cardBottomColor = 0xFF151229.toInt(),
@@ -108,9 +115,9 @@ enum class KoiQrTheme(
         moduleGradStart = 0xFF04384D.toInt(),
         moduleGradMid = 0xFF00567B.toInt(),
         moduleGradEnd = 0xFF681C54.toInt(),
-        finderOuterColor = 0xFF052434.toInt(),
-        finderInnerPrimary = 0xFF006B98.toInt(),
-        finderInnerSecondary = 0xFF8C2264.toInt()
+        finderOuterColor = 0xFF041D2B.toInt(),
+        finderInnerPrimary = 0xFF003E5E.toInt(),
+        finderInnerSecondary = 0xFF6B0E3B.toInt()
     )
 }
 
@@ -151,11 +158,17 @@ object QrCodeHelper {
     /**
      * Generates a QR Code Version 40 [BitMatrix] using the highest error correction level
      * (`H` -> `Q` -> `M` -> `L`) that fits the compressed payload.
+     * When [artLuminanceGrid] is provided, evaluates all 8 QR mask patterns (`0..7`) at the
+     * selected EC level and picks the mask whose modules align best with dark/light artwork regions.
      * Note: We intentionally omit `QR_COMPACT` because ZXing's `MinimalEncoder` ignores
      * `QR_VERSION`; since `KOI://P/<BASE41>` is 100% QR Alphanumeric, standard `Encoder`
      * automatically selects dense Alphanumeric mode AND strictly honors `QR_VERSION = 40`.
      */
-    fun encodeVersion40BitMatrix(content: String): Version40MatrixResult {
+    fun encodeVersion40BitMatrix(
+        content: String,
+        artLuminanceGrid: FloatArray? = null,
+        gridSize: Int = 0
+    ): Version40MatrixResult {
         val writer = QRCodeWriter()
         val ecLevels = listOf(
             ErrorCorrectionLevel.H,
@@ -165,19 +178,51 @@ object QrCodeHelper {
         )
         var lastException: Exception? = null
         for (ec in ecLevels) {
-            val hints = mapOf(
+            val baseHints = mapOf(
                 EncodeHintType.QR_VERSION to QR_VERSION,
                 EncodeHintType.ERROR_CORRECTION to ec,
                 EncodeHintType.MARGIN to QUIET_ZONE_MODULES
             )
             try {
-                val matrix = writer.encode(content, BarcodeFormat.QR_CODE, 0, 0, hints)
-                return Version40MatrixResult(matrix, ec)
+                val defaultMatrix = writer.encode(content, BarcodeFormat.QR_CODE, 0, 0, baseHints)
+                if (artLuminanceGrid != null && gridSize == defaultMatrix.width) {
+                    var bestMatrix = defaultMatrix
+                    var bestScore = Double.NEGATIVE_INFINITY
+                    for (maskId in 0..7) {
+                        val maskHints = baseHints + (EncodeHintType.QR_MASK_PATTERN to maskId)
+                        val candidate = writer.encode(content, BarcodeFormat.QR_CODE, 0, 0, maskHints)
+                        val score = scoreMatrixArtAlignment(candidate, artLuminanceGrid, gridSize)
+                        if (score > bestScore) {
+                            bestScore = score
+                            bestMatrix = candidate
+                        }
+                    }
+                    return Version40MatrixResult(bestMatrix, ec)
+                }
+                return Version40MatrixResult(defaultMatrix, ec)
             } catch (e: WriterException) {
                 lastException = e
             }
         }
         throw lastException ?: WriterException("Payload exceeds QR Version 40 capacity")
+    }
+
+    private fun scoreMatrixArtAlignment(
+        matrix: BitMatrix,
+        artLumGrid: FloatArray,
+        gridSize: Int
+    ): Double {
+        val margin = QUIET_ZONE_MODULES
+        val dataEnd = gridSize - margin
+        var score = 0.0
+        for (my in margin until dataEnd) {
+            val rowOff = my * gridSize
+            for (mx in margin until dataEnd) {
+                val delta = 140.0 - artLumGrid[rowOff + mx]
+                score += if (matrix.get(mx, my)) delta else -delta
+            }
+        }
+        return score
     }
 
     /**
@@ -193,16 +238,17 @@ object QrCodeHelper {
     }
 
     /**
-     * Encodes the playlist and renders a styled Koi Pond Version 40 QR bitmap and
-     * a `1440 x 1600` social/WhatsApp share card bitmap, self-verifying center-emblem
-     * scannability automatically.
+     * Encodes the playlist and renders a full-color artistic Koi Version 40 QR bitmap
+     * (without any obstructing center symbol) plus a `1620 x 1800` social share card bitmap,
+     * self-verifying scannability automatically.
      */
     suspend fun generatePlaylistQr(
         playlistTitle: String,
         playlistDescription: String?,
         coverUrl: String?,
         songs: List<com.koi.backend.innertube.SongItem>,
-        theme: KoiQrTheme = KoiQrTheme.KOI_POND
+        theme: KoiQrTheme = KoiQrTheme.KOI_POND,
+        context: Context? = null
     ): QrGenerationResult = withContext(Dispatchers.Default) {
         if (songs.isEmpty()) {
             return@withContext QrGenerationResult.Error("Add songs to this playlist before sharing")
@@ -214,8 +260,19 @@ object QrCodeHelper {
             return@withContext QrGenerationResult.Error(e.message ?: "Failed to encode playlist")
         }
 
+        val modulePixels = 8
+        val fullSizePx = (QR_CODE_MODULES + QUIET_ZONE_MODULES * 2) * modulePixels // 185 * 8 = 1480
+        val artPixels = context?.let { loadScaledArtPixels(it, theme.artAssetPath, fullSizePx) }
+        val artLumGrid = artPixels?.let {
+            computeModuleLuminanceGrid(it, fullSizePx, QR_CODE_MODULES + QUIET_ZONE_MODULES * 2, modulePixels)
+        }
+
         val matrixResult = try {
-            encodeVersion40BitMatrix(payload.uri)
+            encodeVersion40BitMatrix(
+                content = payload.uri,
+                artLuminanceGrid = artLumGrid,
+                gridSize = QR_CODE_MODULES + QUIET_ZONE_MODULES * 2
+            )
         } catch (_: WriterException) {
             return@withContext QrGenerationResult.TooLarge(
                 songCount = songs.size,
@@ -224,29 +281,49 @@ object QrCodeHelper {
             )
         }
 
-        val preferredRadiusModules = when (matrixResult.errorCorrectionLevel) {
-            ErrorCorrectionLevel.H, ErrorCorrectionLevel.Q -> 12.5f
-            ErrorCorrectionLevel.M -> 11.5f
-            ErrorCorrectionLevel.L -> 9.5f
-        }
-
-        var styledQrBitmap = renderStyledQrBitmap(
-            matrix = matrixResult.bitMatrix,
-            theme = theme,
-            modulePixels = 7,
-            emblemRadiusModules = preferredRadiusModules
-        )
-
-        // Self-verify styled QR pixels with center emblem; if dense EC-L edge case fails,
-        // fall back cleanly to styled QR without center cutout so every generated QR scans 100%.
-        if (!verifyBitmapDecodable(styledQrBitmap, payload.uri)) {
-            styledQrBitmap.recycle()
-            styledQrBitmap = renderStyledQrBitmap(
+        var styledQrBitmap = if (artPixels != null) {
+            renderArtQrBitmap(
+                matrix = matrixResult.bitMatrix,
+                artPixels = artPixels,
+                theme = theme,
+                modulePixels = modulePixels,
+                coreHalfRatio = 0.60f,
+                outerShiftWeight = 0.30f,
+                darkCoreMaxLum = 24f,
+                lightCoreMinLum = 216f
+            )
+        } else {
+            renderStyledQrBitmap(
                 matrix = matrixResult.bitMatrix,
                 theme = theme,
-                modulePixels = 7,
-                emblemRadiusModules = 0f
+                modulePixels = modulePixels
             )
+        }
+
+        // Self-verify scannability; if a tough EC-L pattern needs stronger dot definition,
+        // automatically retry once with firmer core dots, then fallback cleanly if still needed.
+        if (!verifyBitmapDecodable(styledQrBitmap, payload.uri)) {
+            if (artPixels != null) {
+                styledQrBitmap.recycle()
+                styledQrBitmap = renderArtQrBitmap(
+                    matrix = matrixResult.bitMatrix,
+                    artPixels = artPixels,
+                    theme = theme,
+                    modulePixels = modulePixels,
+                    coreHalfRatio = 0.70f,
+                    outerShiftWeight = 0.56f,
+                    darkCoreMaxLum = 20f,
+                    lightCoreMinLum = 222f
+                )
+            }
+            if (!verifyBitmapDecodable(styledQrBitmap, payload.uri)) {
+                styledQrBitmap.recycle()
+                styledQrBitmap = renderStyledQrBitmap(
+                    matrix = matrixResult.bitMatrix,
+                    theme = theme,
+                    modulePixels = modulePixels
+                )
+            }
         }
 
         val shareCardBitmap = renderShareCardBitmap(
@@ -278,19 +355,301 @@ object QrCodeHelper {
         }
     }
 
+    private fun loadScaledArtPixels(context: Context, assetPath: String, targetSize: Int): IntArray? {
+        return runCatching {
+            val decoded = context.assets.open(assetPath).use { stream ->
+                BitmapFactory.decodeStream(stream)
+            } ?: return null
+            val scaled = if (decoded.width == targetSize && decoded.height == targetSize) {
+                decoded
+            } else {
+                Bitmap.createScaledBitmap(decoded, targetSize, targetSize, true).also {
+                    decoded.recycle()
+                }
+            }
+            val pixels = IntArray(targetSize * targetSize)
+            scaled.getPixels(pixels, 0, targetSize, 0, 0, targetSize, targetSize)
+            scaled.recycle()
+            pixels
+        }.getOrNull()
+    }
+
+    internal fun computeModuleLuminanceGrid(
+        artPixels: IntArray,
+        imageSize: Int,
+        gridSize: Int,
+        modulePixels: Int
+    ): FloatArray {
+        val grid = FloatArray(gridSize * gridSize)
+        for (my in 0 until gridSize) {
+            val py = (my * modulePixels + modulePixels / 2).coerceAtMost(imageSize - 1)
+            val rowOff = my * gridSize
+            for (mx in 0 until gridSize) {
+                val px = (mx * modulePixels + modulePixels / 2).coerceAtMost(imageSize - 1)
+                grid[rowOff + mx] = rgbLuminance(artPixels[py * imageSize + px])
+            }
+        }
+        return grid
+    }
+
+    private fun rgbLuminance(argb: Int): Float {
+        val r = (argb ushr 16) and 0xFF
+        val g = (argb ushr 8) and 0xFF
+        val b = argb and 0xFF
+        return 0.299f * r + 0.587f * g + 0.114f * b
+    }
+
+    private fun shiftToTargetLum(argb: Int, targetLum: Float, satBoost: Float): Int {
+        val r = (argb ushr 16) and 0xFF
+        val g = (argb ushr 8) and 0xFF
+        val b = argb and 0xFF
+
+        val l = 0.299f * r + 0.587f * g + 0.114f * b
+        if (l < 1f) {
+            val v = targetLum.roundToInt().coerceIn(0, 255)
+            return (0xFF shl 24) or (v shl 16) or (v shl 8) or v
+        }
+
+        val nr = l + (r - l) * satBoost
+        val ng = l + (g - l) * satBoost
+        val nb = l + (b - l) * satBoost
+
+        val outR: Float
+        val outG: Float
+        val outB: Float
+        if (targetLum <= l) {
+            val scale = max(0f, targetLum / l)
+            outR = nr * scale
+            outG = ng * scale
+            outB = nb * scale
+        } else {
+            val t = (targetLum - l) / max(1f, 255f - l)
+            outR = nr + (255f - nr) * t
+            outG = ng + (255f - ng) * t
+            outB = nb + (255f - nb) * t
+        }
+
+        var ri = outR.roundToInt().coerceIn(0, 255)
+        var gi = outG.roundToInt().coerceIn(0, 255)
+        var bi = outB.roundToInt().coerceIn(0, 255)
+        val actualL = 0.299f * ri + 0.587f * gi + 0.114f * bi
+        val diff = (targetLum - actualL).roundToInt()
+        ri = (ri + diff).coerceIn(0, 255)
+        gi = (gi + diff).coerceIn(0, 255)
+        bi = (bi + diff).coerceIn(0, 255)
+        return (0xFF shl 24) or (ri shl 16) or (gi shl 8) or bi
+    }
+
+    private fun lerpArgb(c1: Int, c2: Int, t: Float): Int {
+        val inv = 1f - t
+        val r = (((c1 ushr 16) and 0xFF) * inv + ((c2 ushr 16) and 0xFF) * t).roundToInt().coerceIn(0, 255)
+        val g = (((c1 ushr 8) and 0xFF) * inv + ((c2 ushr 8) and 0xFF) * t).roundToInt().coerceIn(0, 255)
+        val b = ((c1 and 0xFF) * inv + (c2 and 0xFF) * t).roundToInt().coerceIn(0, 255)
+        return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+    }
+
+    private fun computeHighFrequencyDetail(artPixels: IntArray, size: Int): FloatArray {
+        val total = size * size
+        val lums = FloatArray(total)
+        for (i in 0 until total) {
+            lums[i] = rgbLuminance(artPixels[i])
+        }
+
+        // Fast 2-pass separable box blur (radius = 3 -> 7-pixel span) for crisp scale/fin detail retention
+        val horiz = FloatArray(total)
+        val rad = 3
+        val span = (rad * 2 + 1).toFloat()
+        for (y in 0 until size) {
+            val rowOff = y * size
+            for (x in 0 until size) {
+                var sum = 0f
+                for (dx in -rad..rad) {
+                    val xx = (x + dx).coerceIn(0, size - 1)
+                    sum += lums[rowOff + xx]
+                }
+                horiz[rowOff + x] = sum / span
+            }
+        }
+
+        val detail = FloatArray(total)
+        for (y in 0 until size) {
+            val rowOff = y * size
+            for (x in 0 until size) {
+                var sum = 0f
+                for (dy in -rad..rad) {
+                    val yy = (y + dy).coerceIn(0, size - 1)
+                    sum += horiz[yy * size + x]
+                }
+                detail[rowOff + x] = lums[rowOff + x] - (sum / span)
+            }
+        }
+        return detail
+    }
+
     /**
-     * Renders a colorful, Koi-themed Version 40 QR code with smooth rounded squircle
-     * modules, a multi-stop diagonal Koi gradient, stylized finder eyes, and an optional
-     * centered Koi Pond medallion.
+     * Pure JVM-testable full-color Art-QR pixel synthesis: preserves full-resolution Koi artwork
+     * hues and sharp scale/fin details across the entire square canvas (including a fully colored
+     * quiet zone), while encoding QR module bits via high-contrast luminance-preserving cores.
+     */
+    internal fun fuseArtIntoQrPixels(
+        matrix: BitMatrix,
+        artPixels: IntArray,
+        modulePixels: Int = 8,
+        coreHalfRatio: Float = 0.60f,
+        outerShiftWeight: Float = 0.30f,
+        darkCoreMaxLum: Float = 24f,
+        lightCoreMinLum: Float = 216f
+    ): IntArray {
+        val mw = matrix.width
+        val size = mw * modulePixels
+        require(artPixels.size == size * size) { "Expected ${size * size} art pixels, got ${artPixels.size}" }
+
+        val highFreqDetail = computeHighFrequencyDetail(artPixels, size)
+        val outPixels = IntArray(size * size)
+        val margin = ((mw - QR_CODE_MODULES) / 2).coerceAtLeast(0)
+        val dataEnd = margin + QR_CODE_MODULES
+        val edgeSoft = 0.16f
+        val coreLowEdge = coreHalfRatio - edgeSoft * 0.5f
+        val coreHighEdge = coreHalfRatio + edgeSoft * 0.5f
+
+        for (my in 0 until mw) {
+            for (mx in 0 until mw) {
+                val isQuiet = mx < margin || mx >= dataEnd || my < margin || my >= dataEnd
+                val inTL = mx in margin until (margin + 7) && my in margin until (margin + 7)
+                val inTR = mx in (dataEnd - 7) until dataEnd && my in margin until (margin + 7)
+                val inBL = mx in margin until (margin + 7) && my in (dataEnd - 7) until dataEnd
+                val isFinder = inTL || inTR || inBL
+                val inTLSep = !inTL && mx in margin..(margin + 7) && my in margin..(margin + 7)
+                val inTRSep = !inTR && mx in (dataEnd - 8) until dataEnd && my in margin..(margin + 7)
+                val inBLSep = !inBL && mx in margin..(margin + 7) && my in (dataEnd - 8) until dataEnd
+                val isFinderSep = inTLSep || inTRSep || inBLSep
+
+                val bit = !isQuiet && matrix.get(mx, my)
+
+                var modArtLumSum = 0f
+                for (py in 0 until modulePixels) {
+                    val y = my * modulePixels + py
+                    val rowOff = y * size + mx * modulePixels
+                    for (px in 0 until modulePixels) {
+                        modArtLumSum += rgbLuminance(artPixels[rowOff + px])
+                    }
+                }
+                val modArtNorm = (modArtLumSum / (modulePixels * modulePixels)) / 255f
+
+                for (py in 0 until modulePixels) {
+                    val y = my * modulePixels + py
+                    val ny = ((py + 0.5f) / modulePixels - 0.5f) * 2f
+                    val any = abs(ny)
+                    val ny2 = ny * ny
+                    val rowOff = y * size
+
+                    for (px in 0 until modulePixels) {
+                        val x = mx * modulePixels + px
+                        val idx = rowOff + x
+                        val baseRgb = artPixels[idx]
+                        val baseL = rgbLuminance(baseRgb)
+                        val detail = highFreqDetail[idx]
+
+                        if (isQuiet || isFinder || isFinderSep) {
+                            val minLight = if (isFinder || isFinderSep) 198f else 170f
+                            val targetL = (max(baseL, minLight + modArtNorm * 18f) + detail * 0.24f).coerceIn(0f, 244f)
+                            val blend = if (isFinderSep) 0.88f else 0.78f
+                            val shifted = shiftToTargetLum(baseRgb, targetL, 1.15f)
+                            var pxOut = lerpArgb(baseRgb, shifted, blend)
+
+                            // When rendering pure pixels (unit tests without Canvas overlay), ensure finder patterns remain readable
+                            if (isFinder && bit) {
+                                pxOut = shiftToTargetLum(baseRgb, 18f, 1.4f)
+                            }
+                            outPixels[idx] = pxOut
+                            continue
+                        }
+
+                        val nx = ((px + 0.5f) / modulePixels - 0.5f) * 2f
+                        val anx = abs(nx)
+                        val sqDist = max(anx, any) * 0.68f + sqrt(nx * nx + ny2) * 0.32f
+                        val coreMask = when {
+                            sqDist <= coreLowEdge -> 1f
+                            sqDist >= coreHighEdge -> 0f
+                            else -> 1f - (sqDist - coreLowEdge) / edgeSoft
+                        }
+
+                        if (bit) {
+                            val targetDarkL = (12f + modArtNorm * (darkCoreMaxLum - 12f) + detail * 0.25f)
+                                .coerceIn(6f, darkCoreMaxLum + 8f)
+                            val coreRgb = shiftToTargetLum(baseRgb, targetDarkL, 1.50f)
+
+                            val outerDarkL = min(baseL, max(targetDarkL + 38f, baseL * (1f - 0.65f * outerShiftWeight)))
+                            val outerRgb = lerpArgb(baseRgb, shiftToTargetLum(baseRgb, outerDarkL, 1.25f), outerShiftWeight)
+                            outPixels[idx] = lerpArgb(outerRgb, coreRgb, coreMask)
+                        } else {
+                            val targetLightL = (max(lightCoreMinLum, baseL) + modArtNorm * 12f + detail * 0.25f)
+                                .coerceAtMost(250f)
+                            val coreRgb = shiftToTargetLum(baseRgb, targetLightL, 1.12f)
+
+                            val outerLightL = max(baseL, targetLightL - (1f - outerShiftWeight) * 65f)
+                            val outerRgb = lerpArgb(baseRgb, shiftToTargetLum(baseRgb, outerLightL, 1.10f), outerShiftWeight)
+                            outPixels[idx] = lerpArgb(outerRgb, coreRgb, coreMask)
+                        }
+                    }
+                }
+            }
+        }
+        return outPixels
+    }
+
+    /**
+     * Renders an Android Bitmap fusing full-bleed colorful Koi artwork into the Version 40 QR grid
+     * with zero center emblem obstruction and crisp Koi Finder Eyes.
+     */
+    fun renderArtQrBitmap(
+        matrix: BitMatrix,
+        artPixels: IntArray,
+        theme: KoiQrTheme = KoiQrTheme.KOI_POND,
+        modulePixels: Int = 8,
+        coreHalfRatio: Float = 0.60f,
+        outerShiftWeight: Float = 0.30f,
+        darkCoreMaxLum: Float = 24f,
+        lightCoreMinLum: Float = 216f
+    ): Bitmap {
+        val mw = matrix.width
+        val sizePx = mw * modulePixels
+        val outPixels = fuseArtIntoQrPixels(
+            matrix = matrix,
+            artPixels = artPixels,
+            modulePixels = modulePixels,
+            coreHalfRatio = coreHalfRatio,
+            outerShiftWeight = outerShiftWeight,
+            darkCoreMaxLum = darkCoreMaxLum,
+            lightCoreMinLum = lightCoreMinLum
+        )
+
+        val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        bitmap.setPixels(outPixels, 0, sizePx, 0, 0, sizePx, sizePx)
+
+        val canvas = Canvas(bitmap)
+        val modF = modulePixels.toFloat()
+        val margin = ((mw - QR_CODE_MODULES) / 2).coerceAtLeast(0)
+        val dataEnd = margin + QR_CODE_MODULES
+
+        // Clean high-contrast rounded Koi Finder Eyes over luminous colored water
+        drawFinderEye(canvas, margin * modF, margin * modF, modF, theme.finderOuterColor, theme.finderInnerPrimary)
+        drawFinderEye(canvas, (dataEnd - 7) * modF, margin * modF, modF, theme.finderOuterColor, theme.finderInnerSecondary)
+        drawFinderEye(canvas, margin * modF, (dataEnd - 7) * modF, modF, theme.finderOuterColor, theme.finderInnerPrimary)
+
+        return bitmap
+    }
+
+    /**
+     * Fallback renderer producing a vibrant Koi-themed Version 40 gradient QR code with rounded
+     * squircle modules and crisp finder eyes (no center medallion cutout).
      */
     fun renderStyledQrBitmap(
         matrix: BitMatrix,
         theme: KoiQrTheme = KoiQrTheme.KOI_POND,
-        modulePixels: Int = 7,
-        emblemRadiusModules: Float = 11.5f
+        modulePixels: Int = 7
     ): Bitmap {
         val mw = matrix.width
-        val mh = matrix.height
         val sizePx = mw * modulePixels
         val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -304,11 +663,6 @@ object QrCodeHelper {
         val finderTR = (dataEnd - 7) until dataEnd
         val finderBL = (dataEnd - 7) until dataEnd
 
-        val centerMod = mw / 2f
-        val emblemMaskRadiusMod = if (emblemRadiusModules > 0f) emblemRadiusModules + 1.2f else 0f
-        val emblemMaskSq = emblemMaskRadiusMod * emblemMaskRadiusMod
-
-        // Collect all regular data/alignment modules into one smooth Path for unified gradient fill
         val dataPath = Path()
         val inset = modF * 0.045f
         val cornerR = modF * 0.34f
@@ -320,12 +674,6 @@ object QrCodeHelper {
                 val inTR = mx in finderTR && my in finderTL
                 val inBL = mx in finderTL && my in finderBL
                 if (inTL || inTR || inBL) continue
-
-                if (emblemMaskRadiusMod > 0f) {
-                    val dx = (mx + 0.5f) - centerMod
-                    val dy = (my + 0.5f) - centerMod
-                    if (dx * dx + dy * dy <= emblemMaskSq) continue
-                }
 
                 val left = mx * modF + inset
                 val top = my * modF + inset
@@ -351,23 +699,9 @@ object QrCodeHelper {
         }
         canvas.drawPath(dataPath, modulePaint)
 
-        // Draw 3 stylized Koi Finder Eyes (7x7 outer rounded frame + 3x3 colorful inner jewel)
         drawFinderEye(canvas, margin * modF, margin * modF, modF, theme.finderOuterColor, theme.finderInnerPrimary)
         drawFinderEye(canvas, (dataEnd - 7) * modF, margin * modF, modF, theme.finderOuterColor, theme.finderInnerSecondary)
         drawFinderEye(canvas, margin * modF, (dataEnd - 7) * modF, modF, theme.finderOuterColor, theme.finderInnerPrimary)
-
-        // Draw centered Koi Pond Medallion
-        if (emblemRadiusModules > 0f) {
-            val cx = centerMod * modF
-            val cy = centerMod * modF
-            drawKoiPondMedallion(
-                canvas = canvas,
-                cx = cx,
-                cy = cy,
-                radius = emblemRadiusModules * modF,
-                theme = theme
-            )
-        }
 
         return bitmap
     }
@@ -391,7 +725,7 @@ object QrCodeHelper {
             startX + modPx * 6.5f,
             startY + modPx * 6.5f
         )
-        canvas.drawRoundRect(ringRect, modPx * 1.55f, modPx * 1.55f, outerPaint)
+        canvas.drawRoundRect(ringRect, modPx * 0.55f, modPx * 0.55f, outerPaint)
 
         val innerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = innerColor
@@ -403,7 +737,7 @@ object QrCodeHelper {
             startX + modPx * 5.0f,
             startY + modPx * 5.0f
         )
-        canvas.drawRoundRect(innerRect, modPx * 0.9f, modPx * 0.9f, innerPaint)
+        canvas.drawRoundRect(innerRect, modPx * 0.34f, modPx * 0.34f, innerPaint)
     }
 
     private fun drawKoiPondMedallion(
@@ -581,8 +915,8 @@ object QrCodeHelper {
     }
 
     /**
-     * Renders a vibrant `1440 x 1600` Koi Pond Share Card containing the styled Version 40 QR code
-     * (`1295 x 1295` at 7px/module) with glowing aquatic accents for WhatsApp & social sharing.
+     * Renders a vibrant `1620 x 1800` (or `1440 x 1600` for 7px fallback) Koi Pond Share Card
+     * containing the full-color Version 40 QR code drawn 1:1 pixel-exact for crisp WhatsApp & social sharing.
      */
     private fun renderShareCardBitmap(
         styledQrBitmap: Bitmap,
@@ -590,11 +924,12 @@ object QrCodeHelper {
         title: String,
         songCount: Int
     ): Bitmap {
-        val qrSize = styledQrBitmap.width // 185 * 7 = 1295px
-        val width = 1440
-        val height = 1600
-        val sidePad = (width - qrSize) / 2f // ~72.5px
-        val headerHeight = 192f
+        val qrSize = styledQrBitmap.width // 185 * 8 = 1480px (or 1295px fallback)
+        val width = max(1440, qrSize + 140)
+        val height = (width * 10) / 9
+        val scale = width / 1440f
+        val sidePad = (width - qrSize) / 2f
+        val headerHeight = 192f * scale
 
         val card = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(card)
@@ -618,68 +953,68 @@ object QrCodeHelper {
             shader = RadialGradient(
                 width * 0.16f,
                 height * 0.10f,
-                520f,
+                520f * scale,
                 Color.argb(62, Color.red(theme.accentPrimary), Color.green(theme.accentPrimary), Color.blue(theme.accentPrimary)),
                 Color.TRANSPARENT,
                 Shader.TileMode.CLAMP
             )
         }
-        canvas.drawCircle(width * 0.16f, height * 0.10f, 520f, topGlowPaint)
+        canvas.drawCircle(width * 0.16f, height * 0.10f, 520f * scale, topGlowPaint)
 
         val bottomGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             shader = RadialGradient(
                 width * 0.86f,
                 height * 0.90f,
-                540f,
+                540f * scale,
                 Color.argb(56, Color.red(theme.accentSecondary), Color.green(theme.accentSecondary), Color.blue(theme.accentSecondary)),
                 Color.TRANSPARENT,
                 Shader.TileMode.CLAMP
             )
         }
-        canvas.drawCircle(width * 0.86f, height * 0.90f, 540f, bottomGlowPaint)
+        canvas.drawCircle(width * 0.86f, height * 0.90f, 540f * scale, bottomGlowPaint)
 
         // Subtle concentric pond ripples behind QR
         val ripplePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = theme.rippleColor
             style = Paint.Style.STROKE
-            strokeWidth = 3f
+            strokeWidth = 3f * scale
             alpha = 110
         }
         val qrCenterX = width / 2f
         val qrCenterY = headerHeight + qrSize / 2f
-        canvas.drawCircle(qrCenterX, qrCenterY, 760f, ripplePaint)
-        canvas.drawCircle(qrCenterX, qrCenterY, 880f, ripplePaint)
+        canvas.drawCircle(qrCenterX, qrCenterY, 760f * scale, ripplePaint)
+        canvas.drawCircle(qrCenterX, qrCenterY, 880f * scale, ripplePaint)
 
         // Header Koi Medallion + Playlist Info
-        val logoRadius = 46f
+        val logoRadius = 46f * scale
         val logoCx = sidePad + logoRadius
-        val logoCy = 104f
+        val logoCy = 104f * scale
         drawKoiPondMedallion(canvas, logoCx, logoCy, logoRadius, theme)
 
         val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0xFFF0FDFD.toInt()
-            textSize = 46f
+            textSize = 46f * scale
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
         val subtitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = theme.accentSecondary
-            textSize = 28f
+            textSize = 28f * scale
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
 
-        val textStartX = logoCx + logoRadius + 28f
+        val textStartX = logoCx + logoRadius + 28f * scale
         val maxTextWidth = width - textStartX - sidePad
         val clippedTitle = ellipsizeText(title.ifBlank { "Shared Playlist" }, titlePaint, maxTextWidth)
-        canvas.drawText(clippedTitle, textStartX, 96f, titlePaint)
+        canvas.drawText(clippedTitle, textStartX, 96f * scale, titlePaint)
         canvas.drawText(
             "KOI PLAYLIST • $songCount ${if (songCount == 1) "SONG" else "SONGS"}",
             textStartX,
-            138f,
+            138f * scale,
             subtitlePaint
         )
 
         // Glowing gradient frame around QR card
-        val framePad = 14f
+        val framePad = 12f * scale
         val qrRect = RectF(
             sidePad,
             headerHeight,
@@ -694,7 +1029,7 @@ object QrCodeHelper {
         )
         val framePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = 8f
+            strokeWidth = 7f * scale
             shader = LinearGradient(
                 frameRect.left,
                 frameRect.top,
@@ -705,12 +1040,12 @@ object QrCodeHelper {
                 Shader.TileMode.CLAMP
             )
         }
-        canvas.drawRoundRect(frameRect, 44f, 44f, framePaint)
+        canvas.drawRoundRect(frameRect, 36f * scale, 36f * scale, framePaint)
 
-        // Clip rounded corners for QR pearl canvas & draw styled QR bitmap crisp
+        // Keep corners softly rounded without clipping into the 4-module quiet zone
         canvas.save()
         val qrClip = Path().apply {
-            addRoundRect(qrRect, 34f, 34f, Path.Direction.CW)
+            addRoundRect(qrRect, 24f * scale, 24f * scale, Path.Direction.CW)
         }
         canvas.clipPath(qrClip)
         val qrPaint = Paint().apply {
@@ -723,7 +1058,7 @@ object QrCodeHelper {
         // Footer caption
         val footerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0xFFB8D4DC.toInt()
-            textSize = 26f
+            textSize = 26f * scale
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.CENTER
             letterSpacing = 0.08f
@@ -731,7 +1066,7 @@ object QrCodeHelper {
         canvas.drawText(
             "SCAN IN KOI OR IMPORT IMAGE TO ADD PLAYLIST",
             width / 2f,
-            headerHeight + qrSize + 68f,
+            headerHeight + qrSize + 66f * scale,
             footerPaint
         )
 

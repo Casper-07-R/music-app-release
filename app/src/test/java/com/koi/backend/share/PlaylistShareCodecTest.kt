@@ -4,6 +4,10 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.koi.backend.innertube.SongItem
 import org.junit.Assert.*
 import org.junit.Test
+import java.io.File
+import kotlin.math.abs
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 class PlaylistShareCodecTest {
 
@@ -227,6 +231,74 @@ class PlaylistShareCodecTest {
             assertEquals(
                 largePayload.uri,
                 QrCodeHelper.decodePixels(largePixels, largeWidth, largeWidth)
+            )
+        }
+    }
+
+    @Test
+    fun testFullColorKoiArtQrFusion_assetsExistAndFusedMatrixDecodesForSmallAndLargePlaylists() {
+        val smallPayload = PlaylistShareCodec.encodePlaylist("Art Small", null, null, sampleSongs(10))
+        val largePayload = PlaylistShareCodec.encodePlaylist("Art Large 80", null, null, sampleSongs(80))
+        val modPx = 8
+        val gridSize = 185
+        val targetSize = gridSize * modPx // 1480x1480
+
+        // Verify all 3 themed Koi artworks are bundled in app assets
+        for (theme in KoiQrTheme.entries) {
+            val assetFile = listOf(
+                File("src/main/assets/${theme.artAssetPath}"),
+                File("app/src/main/assets/${theme.artAssetPath}")
+            ).firstOrNull { it.exists() }
+                ?: error("Missing artwork asset ${theme.artAssetPath}")
+            assertTrue("Artwork ${theme.artAssetPath} is unexpectedly small", assetFile.length() > 100_000L)
+        }
+
+        // Synthesize a high-detail colorful pond + orange/navy/white Koi pixel canvas with sharp scale ripples
+        val artPixels = IntArray(targetSize * targetSize)
+        val cx = targetSize / 2f
+        for (y in 0 until targetSize) {
+            val rowOff = y * targetSize
+            val dy = y - cx
+            for (x in 0 until targetSize) {
+                val dx = x - cx
+                val dist = sqrt(dx * dx + dy * dy) / targetSize
+                val wave = sin(dist * 75f) * 0.5f + 0.5f
+                val argb = when {
+                    // Orange-and-white Kohaku band
+                    dist < 0.34f && dx < -30f && ((x / 24 + y / 24) % 2 == 0) -> 0xFFE84A1A.toInt()
+                    dist < 0.34f && dx < -30f -> 0xFFFCF7F2.toInt()
+                    // Deep navy-gold Koi band
+                    dist < 0.34f && dx > 30f && ((x / 18 + y / 18) % 3 == 0) -> 0xFFE5B43B.toInt()
+                    dist < 0.34f && dx > 30f -> 0xFF0A2E5C.toInt()
+                    // Pink lotus center accents
+                    abs(dx) <= 30f && abs(dy) <= 30f -> 0xFFF48FB1.toInt()
+                    // Luminous turquoise water with bright caustic ripples
+                    wave > 0.85f -> 0xFFD0FAFF.toInt()
+                    else -> 0xFF42D4E8.toInt()
+                }
+                artPixels[rowOff + x] = argb
+            }
+        }
+
+        val lumGrid = QrCodeHelper.computeModuleLuminanceGrid(artPixels, targetSize, gridSize, modPx)
+
+        for (payload in listOf(smallPayload, largePayload)) {
+            val matrixResult = QrCodeHelper.encodeVersion40BitMatrix(
+                content = payload.uri,
+                artLuminanceGrid = lumGrid,
+                gridSize = gridSize
+            )
+            assertEquals(gridSize, matrixResult.bitMatrix.width)
+
+            val fusedPixels = QrCodeHelper.fuseArtIntoQrPixels(
+                matrix = matrixResult.bitMatrix,
+                artPixels = artPixels,
+                modulePixels = modPx
+            )
+            assertEquals(
+                "Full-color Koi art QR failed decode (EC-${matrixResult.errorCorrectionLevel})",
+                payload.uri,
+                QrCodeHelper.decodePixels(fusedPixels, targetSize, targetSize)
             )
         }
     }
