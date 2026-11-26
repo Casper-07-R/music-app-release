@@ -26,6 +26,21 @@ data class LocalPlaylistInfo(
     val description: String? = null
 )
 
+data class TopSongStat(
+    val song: SongItem,
+    val playCount: Int
+)
+
+data class TopLabelStat(
+    val label: String,
+    val count: Int
+)
+
+data class DayPlayStat(
+    val dayLabel: String,
+    val playCount: Int
+)
+
 data class SearchHistoryRecord(
     val id: String,
     val type: String,
@@ -805,6 +820,271 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
         db.delete("lyrics_cache", null, null)
     }
 
+    // --- LIFETIME ANALYTICS ---
+
+    fun getTopSongs(limit: Int = 5): List<TopSongStat> {
+        val db = readableDatabase
+        val list = mutableListOf<TopSongStat>()
+        val cursor = db.rawQuery(
+            """
+            SELECT song_json, COUNT(*) AS cnt
+            FROM plays
+            GROUP BY video_id
+            ORDER BY cnt DESC, MAX(played_at) DESC
+            LIMIT ?
+            """.trimIndent(),
+            arrayOf(limit.toString())
+        )
+        while (cursor.moveToNext()) {
+            val json = cursor.getString(0)
+            val cnt = cursor.getInt(1)
+            try {
+                val song = gson.fromJson(json, SongItem::class.java)
+                if (song != null) list.add(TopSongStat(song, cnt))
+            } catch (_: Exception) {}
+        }
+        cursor.close()
+        return list
+    }
+
+    fun getTopArtists(limit: Int = 5): List<TopLabelStat> {
+        val db = readableDatabase
+        val counts = linkedMapOf<String, Int>()
+        val cursor = db.rawQuery("SELECT song_json FROM plays ORDER BY played_at DESC LIMIT 500", null)
+        while (cursor.moveToNext()) {
+            try {
+                val song = gson.fromJson(cursor.getString(0), SongItem::class.java) ?: continue
+                val primaryArtist = song.artists.split(",", "&", "feat.", "ft.")
+                    .firstOrNull()?.trim().orEmpty()
+                if (primaryArtist.isNotBlank() &&
+                    !com.koi.backend.innertube.InnerTubeClient.isMissingArtist(primaryArtist)
+                ) {
+                    counts[primaryArtist] = (counts[primaryArtist] ?: 0) + 1
+                }
+            } catch (_: Exception) {}
+        }
+        cursor.close()
+        return counts.entries
+            .sortedByDescending { it.value }
+            .take(limit)
+            .map { TopLabelStat(it.key, it.value) }
+    }
+
+    /**
+     * Finds stored songs whose artist metadata is missing or "Unknown Artist" so they can be repaired.
+     */
+    fun getSongsWithMissingArtist(limit: Int = 25): List<SongItem> {
+        val db = readableDatabase
+        val found = linkedMapOf<String, SongItem>()
+
+        fun scanTable(query: String) {
+            if (found.size >= limit) return
+            try {
+                val cursor = db.rawQuery(query, null)
+                while (cursor.moveToNext() && found.size < limit) {
+                    val json = cursor.getString(0) ?: continue
+                    try {
+                        val song = gson.fromJson(json, SongItem::class.java) ?: continue
+                        if (song.videoId.isNotBlank() &&
+                            com.koi.backend.innertube.InnerTubeClient.isMissingArtist(song.artists) &&
+                            !found.containsKey(song.videoId)
+                        ) {
+                            found[song.videoId] = song
+                        }
+                    } catch (_: Exception) {}
+                }
+                cursor.close()
+            } catch (_: Exception) {}
+        }
+
+        scanTable("SELECT song_json FROM liked_songs ORDER BY liked_at DESC")
+        scanTable("SELECT song_json FROM local_playlist_tracks")
+        scanTable("SELECT song_json FROM downloaded_songs ORDER BY downloaded_at DESC")
+        scanTable("SELECT song_json FROM search_history WHERE type = 'TRACK' AND song_json IS NOT NULL ORDER BY timestamp DESC")
+        scanTable("SELECT song_json FROM plays ORDER BY played_at DESC LIMIT 100")
+
+        return found.values.toList()
+    }
+
+    /**
+     * Repairs cached song JSON metadata (e.g. artist, album, duration) across all local tables.
+     */
+    fun updateSongMetadata(song: SongItem) {
+        if (song.videoId.isBlank()) return
+        val db = writableDatabase
+        val json = gson.toJson(song)
+        db.beginTransaction()
+        try {
+            val songCv = ContentValues().apply { put("song_json", json) }
+            db.update("liked_songs", songCv, "video_id = ?", arrayOf(song.videoId))
+            db.update("local_playlist_tracks", songCv, "video_id = ?", arrayOf(song.videoId))
+            db.update("downloaded_playlist_tracks", songCv, "video_id = ?", arrayOf(song.videoId))
+            db.update("plays", songCv, "video_id = ?", arrayOf(song.videoId))
+
+            val dlCv = ContentValues().apply {
+                put("title", song.title)
+                put("artist", song.artists)
+                put("song_json", json)
+            }
+            db.update("downloaded_songs", dlCv, "video_id = ?", arrayOf(song.videoId))
+
+            val histCv = ContentValues().apply { put("song_json", json) }
+            db.update("search_history", histCv, "id = ? AND type = 'TRACK'", arrayOf("track_${song.videoId}"))
+
+            db.setTransactionSuccessful()
+        } catch (_: Exception) {
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun recordPlaylistPlay(playlistId: String, title: String) {
+        if (playlistId.isBlank() || title.isBlank()) return
+        val db = writableDatabase
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS playlist_plays (
+                playlist_id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                play_count INTEGER NOT NULL DEFAULT 0,
+                last_played_at INTEGER NOT NULL
+            );
+            """.trimIndent()
+        )
+        val now = System.currentTimeMillis() / 1000
+        db.execSQL(
+            """
+            INSERT INTO playlist_plays (playlist_id, title, play_count, last_played_at)
+            VALUES (?, ?, 1, ?)
+            ON CONFLICT(playlist_id) DO UPDATE SET
+                title = excluded.title,
+                play_count = play_count + 1,
+                last_played_at = excluded.last_played_at
+            """.trimIndent(),
+            arrayOf(playlistId, title, now)
+        )
+    }
+
+    fun getTopPlaylists(limit: Int = 4): List<TopLabelStat> {
+        val db = readableDatabase
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS playlist_plays (
+                playlist_id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                play_count INTEGER NOT NULL DEFAULT 0,
+                last_played_at INTEGER NOT NULL
+            );
+            """.trimIndent()
+        )
+        val list = mutableListOf<TopLabelStat>()
+        val cursor = db.rawQuery(
+            "SELECT title, play_count FROM playlist_plays ORDER BY play_count DESC, last_played_at DESC LIMIT ?",
+            arrayOf(limit.toString())
+        )
+        while (cursor.moveToNext()) {
+            list.add(TopLabelStat(cursor.getString(0), cursor.getInt(1)))
+        }
+        cursor.close()
+        return list
+    }
+
+    fun getDailyPlaysLast7Days(): List<DayPlayStat> {
+        val db = readableDatabase
+        val cal = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val dayFmt = java.text.SimpleDateFormat("EEE", java.util.Locale.US)
+        val result = mutableListOf<DayPlayStat>()
+        for (daysAgo in 6 downTo 0) {
+            val dayCal = (cal.clone() as java.util.Calendar).apply {
+                add(java.util.Calendar.DAY_OF_YEAR, -daysAgo)
+            }
+            val startSec = dayCal.timeInMillis / 1000L
+            val endSec = startSec + 86400L
+            val cursor = db.rawQuery(
+                "SELECT COUNT(*) FROM plays WHERE played_at >= ? AND played_at < ?",
+                arrayOf(startSec.toString(), endSec.toString())
+            )
+            var count = 0
+            if (cursor.moveToFirst()) count = cursor.getInt(0)
+            cursor.close()
+            val label = if (daysAgo == 0) "Today" else dayFmt.format(dayCal.time)
+            result.add(DayPlayStat(label, count))
+        }
+        return result
+    }
+
+    fun getEstimatedHistoryListeningSeconds(): Long {
+        val db = readableDatabase
+        var totalSec = 0L
+        val cursor = db.rawQuery("SELECT song_json FROM plays", null)
+        while (cursor.moveToNext()) {
+            try {
+                val song = gson.fromJson(cursor.getString(0), SongItem::class.java)
+                val dur = song?.durationSeconds ?: 0
+                totalSec += if (dur > 0) dur.toLong() else 180L
+            } catch (_: Exception) {
+                totalSec += 180L
+            }
+        }
+        cursor.close()
+        return totalSec
+    }
+
+    fun getTopGenres(limit: Int = 5): List<TopLabelStat> {
+        val db = readableDatabase
+        val genreRules = listOf(
+            "Pop" to listOf("pop", "taylor", "weeknd", "dua", "ariana", "bruno", "billie", "justin", "ed sheeran", "katy"),
+            "Hip-Hop / Rap" to listOf("rap", "hip hop", "hip-hop", "drake", "kendrick", "travis", "eminem", "kanye", "future", "21 savage"),
+            "Lo-Fi & Chill" to listOf("lofi", "lo-fi", "chill", "ambient", "sleep", "rain", "study", "relax"),
+            "Electronic / Synth" to listOf("synth", "edm", "electronic", "house", "techno", "daft punk", "alan walker", "marshmello", "calvin", "remix"),
+            "Rock & Indie" to listOf("rock", "metal", "guitar", "indie", "linkin", "imagine dragons", "coldplay", "arctic", "nirvana", "queen"),
+            "R&B / Soul" to listOf("r&b", "soul", "sza", "frank ocean", "giveon", "brent"),
+            "K-Pop & Anime" to listOf("kpop", "k-pop", "bts", "blackpink", "newjeans", "anime", "ost", "jpop"),
+            "Acoustic & Vocal" to listOf("acoustic", "unplugged", "vocal", "piano", "ballad", "cover"),
+            "Nightcore & Slowed" to listOf("nightcore", "slowed", "reverb", "sped up")
+        )
+        val counts = linkedMapOf<String, Int>()
+        val texts = mutableListOf<String>()
+
+        val playCursor = db.rawQuery("SELECT song_json FROM plays ORDER BY played_at DESC LIMIT 300", null)
+        while (playCursor.moveToNext()) {
+            try {
+                val song = gson.fromJson(playCursor.getString(0), SongItem::class.java) ?: continue
+                texts.add("${song.title} ${song.artists} ${song.album}".lowercase())
+            } catch (_: Exception) {}
+        }
+        playCursor.close()
+
+        val histCursor = db.rawQuery("SELECT query_text FROM search_history WHERE query_text IS NOT NULL LIMIT 50", null)
+        while (histCursor.moveToNext()) {
+            histCursor.getString(0)?.lowercase()?.let { texts.add(it) }
+        }
+        histCursor.close()
+
+        for (text in texts) {
+            var matched = false
+            for ((genre, keywords) in genreRules) {
+                if (keywords.any { text.contains(it) }) {
+                    counts[genre] = (counts[genre] ?: 0) + 1
+                    matched = true
+                }
+            }
+            if (!matched) {
+                counts["Pop & Hits"] = (counts["Pop & Hits"] ?: 0) + 1
+            }
+        }
+
+        return counts.entries
+            .sortedByDescending { it.value }
+            .take(limit)
+            .map { TopLabelStat(it.key, it.value) }
+    }
+
     // --- DOWNLOADS MANAGEMENT ---
 
     fun isDownloaded(videoId: String): Boolean {
@@ -1228,6 +1508,7 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
     }
 
     fun saveSearchHistoryPlaylist(playlist: PlaylistItem) {
+        if (playlist.id.isBlank() || playlist.id.startsWith("UC")) return
         val db = writableDatabase
         db.execSQL(
             """
@@ -1268,6 +1549,10 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
     fun getSearchHistory(limit: Int = 20): List<SearchHistoryRecord> {
         val db = readableDatabase
         db.execSQL("CREATE TABLE IF NOT EXISTS search_history (id TEXT PRIMARY KEY, type TEXT NOT NULL, query_text TEXT, song_json TEXT, timestamp INTEGER NOT NULL);")
+        // Purge previously saved channel IDs ("UC...") mistyped as PLAYLIST history entries
+        try {
+            writableDatabase.delete("search_history", "type = ? AND id LIKE ?", arrayOf("PLAYLIST", "playlist_UC%"))
+        } catch (_: Exception) {}
         val list = mutableListOf<SearchHistoryRecord>()
         val cursor = db.rawQuery(
             "SELECT id, type, query_text, song_json, timestamp FROM search_history ORDER BY timestamp DESC LIMIT ?",
@@ -1298,11 +1583,12 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
 
             val playlistItem = if (type == "PLAYLIST" && !songJson.isNullOrEmpty()) {
                 try {
-                    gson.fromJson(songJson, PlaylistItem::class.java)
+                    gson.fromJson(songJson, PlaylistItem::class.java)?.takeUnless { it.id.startsWith("UC") }
                 } catch (_: Exception) {
                     null
                 }
             } else null
+            if (type == "PLAYLIST" && playlistItem == null) continue
 
             list.add(
                 SearchHistoryRecord(

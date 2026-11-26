@@ -64,27 +64,35 @@ fun KoiBottomNavBar(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(14.dp))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) { onTabSelected(tab) }
                         .padding(vertical = 4.dp)
                 ) {
-                    Icon(
-                        painter = painterResource(id = iconRes),
-                        contentDescription = tab.label,
-                        tint = animatedTint,
-                        modifier = Modifier.size(22.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isSelected) RogGoldDim else androidx.compose.ui.graphics.Color.Transparent)
+                            .padding(horizontal = 14.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(id = iconRes),
+                            contentDescription = tab.label,
+                            tint = animatedTint,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
 
-                    Spacer(modifier = Modifier.height(3.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
 
                     Text(
                         text = tab.label,
                         fontSize = 10.sp,
                         fontFamily = CircularFontFamily,
-                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                         color = animatedTint
                     )
                 }

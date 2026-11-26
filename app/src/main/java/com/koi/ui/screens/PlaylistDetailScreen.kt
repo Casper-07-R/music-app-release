@@ -52,6 +52,8 @@ fun PlaylistDetailScreen(
     onDownloadPlaylistClick: () -> Unit = {},
     isAddedAsPlaylist: Boolean = false,
     onAddAsPlaylistClick: () -> Unit = {},
+    onSharePlaylistClick: () -> Unit = {},
+    isLoadingPlaylist: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var isManageMode by remember { mutableStateOf(false) }
@@ -268,6 +270,18 @@ fun PlaylistDetailScreen(
                                 }
                             }
 
+                            IconButton(
+                                onClick = onSharePlaylistClick,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_share),
+                                    contentDescription = "Share Playlist QR",
+                                    tint = if (playlist.tracks.isNotEmpty()) RogTextSecondary else RogTextMuted,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
                             if (playlist.isAlbum) {
                                 // Add as Playlist Button (Only option for album)
                                 Box(
@@ -395,10 +409,10 @@ fun PlaylistDetailScreen(
                 }
             }
 
-            // Empty State
+            // Empty / Loading State
             if (playlist.tracks.isEmpty()) {
                 item {
-                    if (playlist.isAlbum) {
+                    if (isLoadingPlaylist) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()

@@ -1,5 +1,8 @@
 package com.koi.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -7,6 +10,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -34,10 +40,27 @@ fun LibraryScreen(
     onCreatePlaylistClick: () -> Unit,
     onDeletePlaylistClick: (Playlist) -> Unit,
     onEditPlaylistClick: (Playlist) -> Unit = {},
+    onSharePlaylistClick: (Playlist) -> Unit = {},
+    onScanQrClick: () -> Unit = {},
+    onImportQrImageUri: (Uri) -> Unit = {},
     onProfileClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val qrImagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            onImportQrImageUri(uri)
+        }
+    }
     var selectedFilter by remember { mutableStateOf("All") }
+    val filteredPlaylists = remember(playlists, selectedFilter) {
+        when (selectedFilter) {
+            "Playlists" -> playlists.filter { !it.isLikedSongs }
+            "Favorites" -> playlists.filter { it.isLikedSongs }
+            else -> playlists
+        }
+    }
     val initial = userName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "U"
 
     LazyColumn(
@@ -91,6 +114,14 @@ fun LibraryScreen(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onScanQrClick) {
+                            Icon(
+                                imageVector = Icons.Rounded.QrCodeScanner,
+                                contentDescription = "Scan Playlist QR",
+                                tint = RogGoldPrimary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
                         IconButton(onClick = onCreatePlaylistClick) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_plus),
@@ -109,11 +140,77 @@ fun LibraryScreen(
                     selectedChip = selectedFilter,
                     onChipSelected = { selectedFilter = it }
                 )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Quick QR Import Actions in Playlist Menu
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(RogSurfaceDark)
+                            .clickable { onScanQrClick() }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.QrCodeScanner,
+                            contentDescription = null,
+                            tint = RogGoldPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Scan QR",
+                            fontSize = 13.sp,
+                            fontFamily = CircularFontFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            color = RogTextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(RogSurfaceDark)
+                            .clickable { qrImagePickerLauncher.launch("image/*") }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.PhotoLibrary,
+                            contentDescription = null,
+                            tint = RogGoldPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Import Image",
+                            fontSize = 13.sp,
+                            fontFamily = CircularFontFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            color = RogTextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
         }
 
         // Playlist Items
-        items(playlists) { playlist ->
+        items(filteredPlaylists) { playlist ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -171,6 +268,20 @@ fun LibraryScreen(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                }
+
+                if (playlist.trackCount > 0 || !playlist.isLikedSongs) {
+                    IconButton(
+                        onClick = { onSharePlaylistClick(playlist) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_share),
+                            contentDescription = "Share Playlist QR",
+                            tint = if (playlist.trackCount > 0) RogTextSecondary else RogTextMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
 
                 if (!playlist.isLikedSongs) {

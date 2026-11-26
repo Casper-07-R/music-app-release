@@ -4,9 +4,11 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import androidx.core.content.IntentCompat
 import androidx.activity.viewModels
 import androidx.activity.ComponentActivity
 import com.koi.KoiApplication
@@ -55,6 +57,8 @@ import com.koi.ui.components.TutorialTarget
 import com.koi.ui.components.InitialUsernameDialog
 import com.koi.ui.components.NowPlayingFullScreenSheet
 import com.koi.ui.components.NowPlayingMiniBar
+import com.koi.ui.components.QrScannerSheet
+import com.koi.ui.components.SharePlaylistQrSheet
 import com.koi.ui.components.SleepTimerSheet
 import com.koi.ui.components.UpdateAvailableDialog
 import androidx.compose.ui.geometry.Rect
@@ -113,12 +117,34 @@ class MainActivity : ComponentActivity() {
 
     private fun handleCustomIntent(intent: Intent?) {
         if (intent == null) return
+        if (intent.getBooleanExtra("koi_handled", false)) return
+
         if (intent.getBooleanExtra("demo_update", false)) {
             playbackViewModel.previewUpdateDialog()
         }
         if (intent.getBooleanExtra("demo_tutorial", false)) {
             UserProfileManager.resetTutorial(this)
             playbackViewModel.startOnboardingTutorial()
+        }
+
+        when (intent.action) {
+            Intent.ACTION_VIEW -> {
+                val uri = intent.data
+                if (uri != null) {
+                    playbackViewModel.importPlaylistFromQrString(uri.toString())
+                    intent.putExtra("koi_handled", true)
+                }
+            }
+            Intent.ACTION_SEND -> {
+                if (intent.type?.startsWith("image/") == true) {
+                    val sharedUri = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+                        ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+                    if (sharedUri != null) {
+                        playbackViewModel.importPlaylistFromImageUri(sharedUri)
+                        intent.putExtra("koi_handled", true)
+                    }
+                }
+            }
         }
     }
 }
@@ -130,6 +156,7 @@ fun KoiApp(
     val uiState by viewModel.uiState.collectAsState()
     val usageMetrics by viewModel.usageMetrics.collectAsState()
     val dspConfig by viewModel.dspConfig.collectAsState()
+    val customPresets by viewModel.customPresets.collectAsState()
     val rotationAngleDegrees by viewModel.rotationAngleDegrees.collectAsState()
     val spectrumBands by viewModel.spectrumBands.collectAsState()
     val updateState by viewModel.updateState.collectAsState()
@@ -173,6 +200,12 @@ fun KoiApp(
         }
     }
 
+    BackHandler(enabled = uiState.showQrScanner) {
+        viewModel.closeQrScanner()
+    }
+    BackHandler(enabled = uiState.playlistToShareQr != null) {
+        viewModel.closeSharePlaylistQr()
+    }
     BackHandler(enabled = uiState.showAddSongsSheet) {
         viewModel.closeAddSongsSheet()
     }
@@ -277,7 +310,11 @@ fun KoiApp(
                     isAddedAsPlaylist = isAddedAsPlaylist,
                     onAddAsPlaylistClick = {
                         uiState.selectedPlaylist?.let { viewModel.addAlbumAsPlaylist(it) }
-                    }
+                    },
+                    onSharePlaylistClick = {
+                        uiState.selectedPlaylist?.let { viewModel.openSharePlaylistQr(it) }
+                    },
+                    isLoadingPlaylist = uiState.isLoadingPlaylist
                 )
             } else if (uiState.showDownloadManager) {
                 DownloadManagerScreen(
@@ -352,6 +389,7 @@ fun KoiApp(
                             onSelectSpatialMode = { mode -> viewModel.setSpatialMode(mode) },
                             onConfigChange = { viewModel.updateDspConfig(it) },
                             onOpenProfileSelector = { viewModel.openProfileSelectorSheet() },
+                            onOpenEqualizer = { viewModel.openEqualizerSheet(fromSettings = false) },
                             onOpenSleepTimer = { viewModel.openSleepTimerDialog() },
                             onSelectStation = { station -> viewModel.playStation(station) },
                             onPlaylistClick = { playlist ->
@@ -452,6 +490,15 @@ fun KoiApp(
                             onEditPlaylistClick = { playlist ->
                                 viewModel.openEditPlaylistDialog(playlist)
                             },
+                            onSharePlaylistClick = { playlist ->
+                                viewModel.openSharePlaylistQr(playlist)
+                            },
+                            onScanQrClick = {
+                                viewModel.openQrScanner()
+                            },
+                            onImportQrImageUri = { uri ->
+                                viewModel.importPlaylistFromImageUri(uri)
+                            },
                             onProfileClick = { viewModel.selectTab(NavigationTab.PROFILE) }
                         )
                     }
@@ -460,6 +507,7 @@ fun KoiApp(
                             userName = uiState.username,
                             usageMetrics = usageMetrics,
                             sleepTimerRemainingSeconds = uiState.sleepTimerRemainingSeconds,
+                            isPlaying = uiState.isPlaying,
                             onClearCacheClick = { viewModel.clearCache() },
                             onRefreshMetricsClick = { viewModel.refreshUsageMetrics() },
                             onSetSleepTimer = { viewModel.setSleepTimer(it) },
@@ -543,7 +591,7 @@ fun KoiApp(
                 isEightDActive = isEightDActive,
                 eightDLabel = eightDLabel,
                 activeProfileName = activeProfileName,
-                isEqActive = dspConfig.eqEnabled,
+                isEqActive = dspConfig.eqEnabled && !dspConfig.abBypass,
                 onDownloadClick = { viewModel.toggleDownload(uiState.currentTrack) },
                 onEightDClick = { viewModel.cycleSpatialMode() },
                 onEightDLongClick = { viewModel.openProfileSelectorSheet() },
@@ -556,14 +604,14 @@ fun KoiApp(
             EightDProfileSelectorSheet(
                 activeProfile = dspConfig.activeProfile,
                 spatialMode = dspConfig.spatialMode,
+                onSelectSpatialMode = { mode -> viewModel.setSpatialMode(mode) },
                 onProfileSelect = { profile ->
                     viewModel.selectProfile(profile)
-                    Toast.makeText(context, "${profile.label} profile active", Toast.LENGTH_SHORT).show()
-                    viewModel.closeProfileSelectorSheet()
                 },
                 onResetProfile = { profile ->
                     viewModel.resetProfile(profile)
                 },
+                onOpenEqualizer = { viewModel.openEqualizerSheet(fromSettings = false) },
                 onClose = { viewModel.closeProfileSelectorSheet() }
             )
         }
@@ -580,6 +628,10 @@ fun KoiApp(
                 onProfileSelect = { viewModel.selectProfile(it) },
                 onResetProfile = { viewModel.resetProfile(it) },
                 onResetToFlat = { viewModel.resetToFlat() },
+                onOpenEqualizer = {
+                    viewModel.closeEightDStudioSheet()
+                    viewModel.openEqualizerSheet(fromSettings = false)
+                },
                 onSetSleepTimer = { viewModel.setSleepTimer(it) },
                 onClose = { viewModel.closeEightDStudioSheet() }
             )
@@ -599,8 +651,14 @@ fun KoiApp(
             EqualizerProfilesSheet(
                 dspConfig = dspConfig,
                 selectedPreset = uiState.selectedEqPreset,
+                spectrumBands = spectrumBands,
+                customPresets = customPresets,
                 showResetButton = uiState.isEqualizerFromSettings,
                 onSelectPreset = { viewModel.selectEqPreset(it) },
+                onProfileSelect = { viewModel.selectProfile(it) },
+                onSaveCustomPreset = { name -> viewModel.saveCustomPreset(name) },
+                onDeleteCustomPreset = { name -> viewModel.deleteCustomPreset(name) },
+                onResetEqualizer = { viewModel.resetEqualizerAndTone() },
                 onConfigChange = { viewModel.updateDspConfig(it) },
                 onDismiss = { viewModel.closeEqualizerSheet() }
             )
@@ -1073,6 +1131,58 @@ fun KoiApp(
                     viewModel.dismissUpdateDialog()
                 }
             )
+        }
+
+        // Share Playlist QR Modal Bottom Sheet
+        uiState.playlistToShareQr?.let { playlistToShare ->
+            SharePlaylistQrSheet(
+                playlist = playlistToShare,
+                onDismiss = { viewModel.closeSharePlaylistQr() }
+            )
+        }
+
+        // In-App Playlist QR Camera Scanner & Image Importer
+        if (uiState.showQrScanner) {
+            QrScannerSheet(
+                isImportingImage = uiState.isImportingPlaylistQr,
+                onQrCodeScanned = { rawQr -> viewModel.importPlaylistFromQrString(rawQr) },
+                onImportImageUri = { uri -> viewModel.importPlaylistFromImageUri(uri) },
+                onDismiss = { viewModel.closeQrScanner() }
+            )
+        }
+
+        // Non-blocking overlay when importing QR from Gallery / WhatsApp Share
+        if (uiState.isImportingPlaylistQr && !uiState.showQrScanner) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(RogObsidian.copy(alpha = 0.65f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = RogSurfaceDark
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            color = RogGoldPrimary,
+                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Text(
+                            text = "Importing playlist from QR...",
+                            fontFamily = CircularFontFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            color = RogTextPrimary,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            }
         }
 
         // Step-by-Step Game Mechanics Spotlight Walkthrough Tutorial

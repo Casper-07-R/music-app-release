@@ -255,7 +255,9 @@ fun SearchScreen(
                                                         onArtistClick(artist)
                                                     }
                                                     "SONG" -> {
-                                                        val track = Track(
+                                                        val track = top.songItem?.let {
+                                                            Track.fromSongItem(it)
+                                                        } ?: Track(
                                                             id = top.id,
                                                             title = top.title,
                                                             artist = top.subtitle ?: "",

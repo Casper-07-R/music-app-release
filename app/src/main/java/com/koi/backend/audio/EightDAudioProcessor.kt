@@ -13,26 +13,41 @@ import java.nio.ByteOrder
 import kotlin.math.*
 
 /**
- * Audiophile 8D Spatial Audio & DSP Processor.
+ * Audiophile Spatial Audio, 10-Band Precision EQ & Immersive Hearing DSP Processor.
  *
- * Implements the Starboy-style MPV / FFmpeg lavfi audio filter chain:
- * lavfi=[acrossover=split=250:order=4th[lo][hi];[hi]apulsator=mode=sine:hz=0.17:amount=0.4:offset_l=0:offset_r=0.5[hip];[lo][hip]amix=inputs=2:weights=1 1:normalize=0,aecho=0.8:0.9:40|70:0.25|0.15,alimiter=limit=0.95]
+ * Signal flow:
+ * Input -> Smooth Pre-Amp + Auto-Headroom -> Soundstage Width (M/S) ->
+ * Bass Shelf -> Treble Air Shelf -> Vocal Presence (2.2 kHz) -> Sound Definition (3.6 kHz) ->
+ * 10-Band Proportional-Q Graphic EQ -> Upward Micro-Detail Extractor ->
+ * 4th-Order Linkwitz-Riley Crossover (Sub-Bass Mono Anchor) ->
+ * Orbital 8D/16D ITD Spatializer or 7.1.4 Surround Dome ->
+ * Binaural Crossfeed -> Early Studio Reflections -> Stereo Schroeder-Moorer Reverb ->
+ * True-Peak Lookahead Limiter + Soft-Knee Safety Saturation -> Live 2048-pt FFT Spectrum Analyzer.
  */
 @OptIn(UnstableApi::class)
 class EightDAudioProcessor : BaseAudioProcessor() {
 
-    // Current dynamic configuration
+    @Volatile
     var config: AudioDspConfig = AudioDspConfig.createConfig(SpatialMode.OFF, AudioProfile.BALANCED)
         set(value) {
             field = value
-            updateFilters()
+            if (!isProcessingThreadActive) {
+                updateFilters(value)
+                appliedConfig = value
+            }
         }
+
+    @Volatile
+    private var appliedConfig: AudioDspConfig? = null
+
+    @Volatile
+    private var isProcessingThreadActive = false
 
     // Realtime live emissions for UI Visualizers
     private val _rotationAngleDegrees = MutableStateFlow(0f)
     val rotationAngleDegrees: StateFlow<Float> = _rotationAngleDegrees.asStateFlow()
 
-    private val _spectrumBands = MutableStateFlow(FloatArray(10) { 0f })
+    private val _spectrumBands = MutableStateFlow(FloatArray(10) { 0.05f })
     val spectrumBands: StateFlow<FloatArray> = _spectrumBands.asStateFlow()
 
     // Internal DSP state
@@ -40,21 +55,36 @@ class EightDAudioProcessor : BaseAudioProcessor() {
     private var channelCount: Int = 2
     private var rotationPhase: Double = 0.0
 
+    // Smooth parameter ramping (eliminates zipper noise & clicks on live slider moves)
+    private var paramSmoothCoeff: Float = 0.004f
+    private var currentPreGainFactor: Float = 1.0f
+    private var targetPreGainFactor: Float = 1.0f
+    private var currentStereoWidth: Float = 1.0f
+    private var targetStereoWidth: Float = 1.0f
+
+    // Active-filter skip flags
+    private var hasActiveEqBands: Boolean = false
+    private var hasActiveBassBoost: Boolean = false
+    private var hasActiveTrebleClarity: Boolean = false
+    private var hasActiveVocalFilter: Boolean = false
+    private var hasActiveDefFilter: Boolean = false
+
     // ITD Delay line (Interaural Time Difference buffer)
     private val itdBufferL = FloatArray(256)
     private val itdBufferR = FloatArray(256)
     private var itdWriteIndex = 0
 
-    // Continuous Front-back pinna acoustic filter states (1-pole low pass)
-    private var pinnaStateL = 0f
-    private var pinnaStateR = 0f
+    // Binaural Head-Shadow (ILD) and Pinna Front-Back Acoustic Filters
+    private var headShadowStateL = 0f
+    private var headShadowStateR = 0f
+    private var pinnaBackStateL = 0f
+    private var pinnaBackStateR = 0f
 
     // Crossfeed filter states (Bauer/Chu Moy acoustic blend)
     private var xfeedStateL = 0f
     private var xfeedStateR = 0f
 
     // 4th-Order Linkwitz-Riley Crossover Filters (2 cascaded 2nd-order Butterworth LP + HP per channel)
-    // Ensures mathematically flat magnitude sum (0 dB) with zero phase cancellation on rock kick/snare punch
     private val crossoverLp1L = BiquadFilter()
     private val crossoverLp2L = BiquadFilter()
     private val crossoverLp1R = BiquadFilter()
@@ -64,37 +94,31 @@ class EightDAudioProcessor : BaseAudioProcessor() {
     private val crossoverHp1R = BiquadFilter()
     private val crossoverHp2R = BiquadFilter()
 
-    // Bass Boost Biquad Filter (Low Shelf)
+    // Tone & Presence Biquad Filters
     private val bassFilterL = BiquadFilter()
     private val bassFilterR = BiquadFilter()
-
-    // Treble Clarity Biquad Filter (High Shelf at 8000 Hz)
     private val trebleFilterL = BiquadFilter()
     private val trebleFilterR = BiquadFilter()
-
-    // Vocal Presence Biquad Filter (2200 Hz Vocal Lift & Body)
     private val vocalFilterL = BiquadFilter()
     private val vocalFilterR = BiquadFilter()
-
-    // Sound Definition Peaking Filter (3600 Hz Upper-Mid Articulation & Transient Edge)
     private val definitionFilterL = BiquadFilter()
     private val definitionFilterR = BiquadFilter()
 
-    // 10-Band Graphic Equalizer Filter Chain (PipeWire smart filter bq_peaking from EQ-Clone)
+    // 10-Band Proportional-Q Graphic Equalizer Filter Chain
     private val eqFiltersL = Array(10) { BiquadFilter() }
     private val eqFiltersR = Array(10) { BiquadFilter() }
 
-    // Reverb Low-Cut Filter (High-pass at 220 Hz to avoid bass mud)
+    // Reverb Low-Cut Filter (High-pass to keep sub-bass punch clean)
     private val reverbHpFilter = BiquadFilter()
 
-    // Feed-Forward FIR Arena Early Reflections (zero feedback = zero tearing/flutter)
+    // Feed-Forward FIR Studio Early Reflections (zero feedback = zero tearing/flutter)
     private val arenaReflBufL = FloatArray(8192)
     private val arenaReflBufR = FloatArray(8192)
     private var arenaReflIdx = 0
     private var arenaReflDampL = 0f
     private var arenaReflDampR = 0f
 
-    // Stationary Surround 360° Speaker System (Surround sound from all sides simultaneously)
+    // Stationary Surround 360° Speaker System
     private val surroundRearBufL = FloatArray(2048)
     private val surroundRearBufR = FloatArray(2048)
     private var surroundRearIdx = 0
@@ -118,12 +142,12 @@ class EightDAudioProcessor : BaseAudioProcessor() {
     private val allPassIndicesL = IntArray(2)
     private val allPassIndicesR = IntArray(2)
 
-    // True-Peak Lookahead / Smooth-Release Limiter state
+    // True-Peak Smooth-Release Limiter state
     private var peakEnvelope = 0f
     private var limiterGain = 1.0f
     private var releaseDecayCoeff = 0.9996f
 
-    // Micro-dynamics detail extraction state (elevates subtle whispers, finger slides, ghost notes)
+    // Micro-dynamics detail extraction state
     private var detailEnvelope = 0f
     private var detailGain = 1.0f
     private var detailAttackCoeff = 0.998f
@@ -131,10 +155,41 @@ class EightDAudioProcessor : BaseAudioProcessor() {
     private var microAirFilterL = 0f
     private var microAirFilterR = 0f
 
-    // Spectrum visualizer energy bins
-    private val bandEnergies = FloatArray(10)
+    // Real-time 2048-point Radix-2 Cooley-Tukey FFT 10-Band Spectrum Analyzer
+    private val fftSize = 2048
+    private val fftMask = fftSize - 1
+    private val fftRingBuffer = FloatArray(fftSize)
+    private var fftWriteIdx = 0
+    private val fftReal = FloatArray(fftSize)
+    private val fftImag = FloatArray(fftSize)
+    private val hannWindow = FloatArray(fftSize) { i ->
+        (0.5 * (1.0 - cos(2.0 * Math.PI * i / (fftSize - 1)))).toFloat()
+    }
+    private val bitReverseTable = IntArray(fftSize)
+    private val fftCosTable = FloatArray(fftSize / 2)
+    private val fftSinTable = FloatArray(fftSize / 2)
+    private val smoothedSpectrum = FloatArray(10) { 0.05f }
+
     private var sampleCounter = 0
     private var inputEncoding: Int = C.ENCODING_PCM_16BIT
+
+    init {
+        val bits = 11 // log2(2048)
+        for (i in 0 until fftSize) {
+            var x = i
+            var rev = 0
+            for (b in 0 until bits) {
+                rev = (rev shl 1) or (x and 1)
+                x = x ushr 1
+            }
+            bitReverseTable[i] = rev
+        }
+        for (k in 0 until fftSize / 2) {
+            val angle = -2.0 * Math.PI * k / fftSize
+            fftCosTable[k] = cos(angle).toFloat()
+            fftSinTable[k] = sin(angle).toFloat()
+        }
+    }
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT && inputAudioFormat.encoding != C.ENCODING_PCM_FLOAT) {
@@ -144,7 +199,7 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         sampleRate = inputAudioFormat.sampleRate.coerceAtLeast(8000)
         channelCount = inputAudioFormat.channelCount
 
-        // 60ms release curve for limiter: decay = exp(-1.0 / (sampleRate * 0.060))
+        // 60ms release curve for limiter
         val releaseSamples = sampleRate * 0.060
         releaseDecayCoeff = exp(-1.0 / releaseSamples).toFloat()
 
@@ -154,7 +209,14 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         detailAttackCoeff = exp(-1.0 / detailAttackSamples).toFloat()
         detailReleaseCoeff = exp(-1.0 / detailReleaseSamples).toFloat()
 
-        updateFilters()
+        // ~8ms parameter smoothing to prevent clicks during live slider drags
+        paramSmoothCoeff = (1.0 - exp(-1.0 / (sampleRate * 0.008))).toFloat().coerceIn(0.0005f, 0.05f)
+
+        val cfg = config
+        updateFilters(cfg)
+        appliedConfig = cfg
+        currentPreGainFactor = targetPreGainFactor
+        currentStereoWidth = targetStereoWidth
         return AudioProcessor.AudioFormat(sampleRate, 2, C.ENCODING_PCM_16BIT)
     }
 
@@ -162,22 +224,27 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         val remainingBytes = inputBuffer.remaining()
         if (remainingBytes == 0) return
 
+        isProcessingThreadActive = true
+
         val bytesPerSample = if (inputEncoding == C.ENCODING_PCM_FLOAT) 4 else 2
         val bytesPerFrame = channelCount * bytesPerSample
         val frameCount = remainingBytes / bytesPerFrame
         if (frameCount == 0) {
-            // Must always consume inputBuffer completely so AudioProcessingPipeline / AudioSink never deadlocks
             inputBuffer.position(inputBuffer.limit())
             return
         }
 
-        val outputBuffer = replaceOutputBuffer(frameCount * 4) // Always 2 channels * 2 bytes = 4 bytes per frame
+        val outputBuffer = replaceOutputBuffer(frameCount * 4)
         outputBuffer.order(ByteOrder.LITTLE_ENDIAN)
         inputBuffer.order(ByteOrder.LITTLE_ENDIAN)
 
         val cfg = config
+        if (cfg !== appliedConfig) {
+            updateFilters(cfg)
+            appliedConfig = cfg
+        }
 
-        // Fast-path bypass
+        // Fast-path bit-perfect bypass
         if (!cfg.masterEnabled || cfg.abBypass) {
             if (channelCount == 2 && inputEncoding == C.ENCODING_PCM_16BIT) {
                 val bytesToCopy = frameCount * 4
@@ -207,9 +274,6 @@ class EightDAudioProcessor : BaseAudioProcessor() {
             return
         }
 
-        // Active DSP Processing - Starboy-style MPV chain:
-        val preGainFactor = if (cfg.preGainDb != 0.0f) 10.0.pow(cfg.preGainDb / 20.0).toFloat() else 1.0f
-
         val rotationSpeedSec = cfg.rotationSpeedSeconds.coerceAtLeast(1.0f)
         val phaseDelta = (2.0 * Math.PI) / (sampleRate * rotationSpeedSec) *
                 (if (cfg.rotationDirection == RotationDirection.CLOCKWISE) 1.0 else -1.0)
@@ -217,15 +281,24 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         val maxItdSamples = (sampleRate * 0.00075).toFloat().coerceIn(1f, 36f)
         val bufSize = itdBufferL.size
         val decay = releaseDecayCoeff
+        val smooth = paramSmoothCoeff
 
-        val useArenaRefl = cfg.useDualTapEcho
-        val arenaTap1 = (sampleRate * 0.038f).toInt().coerceIn(1, arenaReflBufL.size - 1)
-        val arenaTap2 = (sampleRate * 0.054f).toInt().coerceIn(1, arenaReflBufR.size - 1)
-        val arenaTap3 = (sampleRate * 0.076f).toInt().coerceIn(1, arenaReflBufL.size - 1)
+        val useEarlyRefl = cfg.useDualTapEcho
+        val reflTap1 = (sampleRate * 0.018f).toInt().coerceIn(1, arenaReflBufL.size - 1)
+        val reflTap2 = (sampleRate * 0.029f).toInt().coerceIn(1, arenaReflBufR.size - 1)
+        val reflTap3 = (sampleRate * 0.043f).toInt().coerceIn(1, arenaReflBufL.size - 1)
         val surroundRearDelay = (sampleRate * 0.015f).toInt().coerceIn(1, surroundRearBufL.size - 1)
 
+        val useEq = cfg.eqEnabled && hasActiveEqBands
+        val useBass = hasActiveBassBoost
+        val useTreble = hasActiveTrebleClarity
+        val useVocal = hasActiveVocalFilter
+        val useDef = hasActiveDefFilter
+        val microScale = cfg.microDetailLevel.coerceIn(0f, 1f)
+        val useMicroDetail = microScale > 0.01f && (cfg.compressorEnabled || cfg.volumeNormalization || microScale > 0.05f)
+        val isSurround360Profile = cfg.activeProfile == AudioProfile.SPATIAL_360
+
         for (i in 0 until frameCount) {
-            // Read normalized left & right samples in range [-1.0, 1.0]
             var inL = if (inputEncoding == C.ENCODING_PCM_FLOAT) {
                 inputBuffer.float.coerceIn(-1.0f, 1.0f)
             } else {
@@ -246,49 +319,48 @@ class EightDAudioProcessor : BaseAudioProcessor() {
                 }
             }
 
-            // Headroom scaling
-            inL *= preGainFactor
-            inR *= preGainFactor
+            // Smooth Pre-Amp & Auto-Headroom gain staging
+            currentPreGainFactor += (targetPreGainFactor - currentPreGainFactor) * smooth
+            inL *= currentPreGainFactor
+            inR *= currentPreGainFactor
 
-            // Stereo Width Expansion (Input Soundstage Separation)
-            // Separates distinct instruments across the stereo soundfield before spatialization
-            // so each instrument occupies its own acoustic pocket in space
-            if (cfg.stereoWidth > 0.05f && abs(cfg.stereoWidth - 1.0f) > 0.01f) {
+            // Soundstage Width Expansion (Mid/Side)
+            currentStereoWidth += (targetStereoWidth - currentStereoWidth) * smooth
+            if (abs(currentStereoWidth - 1.0f) > 0.005f) {
                 val mid = (inL + inR) * 0.5f
-                val side = (inL - inR) * 0.5f * cfg.stereoWidth
+                val side = (inL - inR) * 0.5f * currentStereoWidth
                 inL = mid + side
                 inR = mid - side
             }
 
-            // Optional Tone Shaping (if engaged)
-            if (cfg.bassBoostEnabled && cfg.bassBoostGainDb > 0.05f) {
+            // Tone & Presence Filters (only executed when active)
+            if (useBass) {
                 inL = bassFilterL.process(inL)
                 inR = bassFilterR.process(inR)
             }
-            if (cfg.trebleClarityDb > 0.05f) {
+            if (useTreble) {
                 inL = trebleFilterL.process(inL)
                 inR = trebleFilterR.process(inR)
             }
-            // Vocal Presence (2.2 kHz Vocal Lift)
-            inL = vocalFilterL.process(inL)
-            inR = vocalFilterR.process(inR)
+            if (useVocal) {
+                inL = vocalFilterL.process(inL)
+                inR = vocalFilterR.process(inR)
+            }
+            if (useDef) {
+                inL = definitionFilterL.process(inL)
+                inR = definitionFilterR.process(inR)
+            }
 
-            // Upper-Mid Sound Definition (3.6 kHz Transient & Instrument Edge)
-            inL = definitionFilterL.process(inL)
-            inR = definitionFilterR.process(inR)
-
-            // 10-Band Graphic Equalizer Filter Chain (PipeWire bq_peaking mechanism from EQ-Clone)
-            if (cfg.eqEnabled) {
+            // 10-Band Proportional-Q Graphic Equalizer Chain
+            if (useEq) {
                 for (b in 0 until 10) {
                     inL = eqFiltersL[b].process(inL)
                     inR = eqFiltersR[b].process(inR)
                 }
             }
 
-            // Upward Micro-Dynamics Detail Extractor:
-            // Elevates even the slightest minute sounds (whispers, finger slides, breaths, cymbal tails, ghost notes)
-            // with crystal-clear high-frequency air definition without squashing loud drum/kick attacks
-            if (cfg.compressorEnabled || cfg.volumeNormalization) {
+            // Tunable Upward Micro-Dynamics Detail Extractor
+            if (useMicroDetail) {
                 val instPeak = max(abs(inL), abs(inR))
                 if (instPeak > detailEnvelope) {
                     detailEnvelope = detailEnvelope * detailAttackCoeff + instPeak * (1f - detailAttackCoeff)
@@ -298,7 +370,7 @@ class EightDAudioProcessor : BaseAudioProcessor() {
 
                 val safeEnv = max(detailEnvelope, 1e-4f)
                 val envDb = 20.0f * log10(safeEnv)
-                val targetBoostDb = when {
+                val baseBoostDb = when {
                     envDb >= -12.0f -> 0.0f
                     envDb >= -28.0f -> ((-12.0f - envDb) / 16.0f) * 4.5f
                     envDb >= -55.0f -> 4.5f + ((-28.0f - envDb) / 27.0f) * 2.0f
@@ -306,25 +378,21 @@ class EightDAudioProcessor : BaseAudioProcessor() {
                     envDb >= -80.0f -> max(0.0f, ((envDb - (-80.0f)) / 8.0f) * 3.0f)
                     else -> 0.0f
                 }
-                val targetBoostGain = 10.0.pow(targetBoostDb / 20.0).toFloat()
+                val scaledBoostDb = baseBoostDb * microScale
+                val targetBoostGain = 10.0.pow(scaledBoostDb / 20.0).toFloat()
                 detailGain += (targetBoostGain - detailGain) * (1f - detailAttackCoeff)
 
-                // High-frequency air extraction for pristine clarity on quiet nuances
                 microAirFilterL += 0.35f * (inL - microAirFilterL)
                 microAirFilterR += 0.35f * (inR - microAirFilterR)
                 val airL = inL - microAirFilterL
                 val airR = inR - microAirFilterR
-                val airLift = ((detailGain - 1.0f) * 0.15f).coerceIn(0f, 0.20f)
+                val airLift = ((detailGain - 1.0f) * 0.16f * microScale).coerceIn(0f, 0.22f)
 
                 inL = inL * detailGain + airL * airLift
                 inR = inR * detailGain + airR * airLift
             }
 
-            // Accumulate spectrum energy for live visualizer
-            accumulateBandEnergy(inL, inR)
-
-            // 1. 4th-Order Linkwitz-Riley Crossover (220 Hz split):
-            // Keeps punchy kick drums & sub-bass anchored dead-center in mono during 3D rotation
+            // 1. 4th-Order Linkwitz-Riley Crossover (keeps sub-bass anchored dead-center during 3D orbit)
             val centerBass = cfg.is8dEnabled && cfg.subBassCentering
             val lowL: Float
             val lowR: Float
@@ -343,34 +411,40 @@ class EightDAudioProcessor : BaseAudioProcessor() {
                 hiR = inR
             }
 
-            // Bass handling: below 220 Hz kept centered (not panned)
-            // Centering low frequencies locks rock kicks & bass riffs solidly in mono center
             val centeredLow = (lowL + lowR) * 0.5f
             val loOutL = if (centerBass) centeredLow else lowL
             val loOutR = if (centerBass) centeredLow else lowR
 
-            // 2. Spatial Engine:
+            // 2. Spatial Engine (Orbital 8D/16D or 7.1 Surround 360° Dome)
             var hipL = hiL
             var hipR = hiR
 
-            if (cfg.activeProfile == AudioProfile.SPATIAL_360 && cfg.is8dEnabled) {
-                // True 360° Multi-Speaker Surround System with Subtle Panning
-                // Sound comes from all sides simultaneously (Front, Center, Left Side, Right Side, Rear)
-                // while gently drifting in a smooth 360° pan around the sweet spot.
-                rotationPhase = (rotationPhase + phaseDelta) % (2.0 * Math.PI)
-                if (rotationPhase < 0) rotationPhase += 2.0 * Math.PI
+            if (isSurround360Profile) {
+                val frontBias: Float
+                val rearBias: Float
+                val panL: Float
+                val panR: Float
 
-                val xPos = sin(rotationPhase).toFloat()
-                val yPos = cos(rotationPhase).toFloat()
+                if (cfg.is8dEnabled) {
+                    rotationPhase = (rotationPhase + phaseDelta) % (2.0 * Math.PI)
+                    if (rotationPhase < 0) rotationPhase += 2.0 * Math.PI
 
-                // Front & Rear directional bias (gentle +18% / -18% swell as sound rotates front/back)
-                val frontBias = 1.0f + yPos * 0.18f
-                val rearBias = 1.0f - yPos * 0.18f
+                    val xPos = sin(rotationPhase).toFloat()
+                    val yPos = cos(rotationPhase).toFloat()
 
-                // Slight lateral panning depth (subtle 0.28 depth so opposite ear never cuts out)
-                val panDepth = cfg.panDepth.coerceIn(0.15f, 0.45f)
-                val panL = (1.0f - panDepth) + panDepth * 0.5f * (1.0f - xPos)
-                val panR = (1.0f - panDepth) + panDepth * 0.5f * (1.0f + xPos)
+                    frontBias = 1.0f + yPos * 0.18f
+                    rearBias = 1.0f - yPos * 0.18f
+
+                    val panDepth = cfg.panDepth.coerceIn(0.35f, 0.75f)
+                    panL = (1.0f - panDepth) + panDepth * 0.5f * (1.0f - xPos)
+                    panR = (1.0f - panDepth) + panDepth * 0.5f * (1.0f + xPos)
+                } else {
+                    // Stationary 7.1.4 Surround Dome in Stereo mode
+                    frontBias = 1.0f
+                    rearBias = 1.0f
+                    panL = 1.0f
+                    panR = 1.0f
+                }
 
                 val center = (hiL + hiR) * 0.5f
                 val frontL = hiL
@@ -380,7 +454,6 @@ class EightDAudioProcessor : BaseAudioProcessor() {
                 val sideL = side * 1.35f
                 val sideR = -side * 1.35f
 
-                // Rear surround channels (15ms Haas delay + pinna shadow)
                 val inRearL = hiL - hiR * 0.38f
                 val inRearR = hiR - hiL * 0.38f
                 surroundRearBufL[surroundRearIdx] = inRearL
@@ -396,16 +469,12 @@ class EightDAudioProcessor : BaseAudioProcessor() {
                 val rearSpkL = rawRearL * 0.55f + surroundPinnaL * 0.45f
                 val rearSpkR = rawRearR * 0.55f + surroundPinnaR * 0.45f
 
-                // Multi-speaker surround summation with gentle front/rear motion
                 val sumL = frontL * (0.65f * frontBias) + center * (0.25f * frontBias) + sideL * 0.40f + (rearSpkL * 0.35f + rearSpkR * 0.12f) * rearBias
                 val sumR = frontR * (0.65f * frontBias) + center * (0.25f * frontBias) + sideR * 0.40f + (rearSpkR * 0.35f + rearSpkL * 0.12f) * rearBias
 
-                // Apply slight 360° lateral panning
                 hipL = sumL * panL
                 hipR = sumR * panR
-
             } else if (cfg.is8dEnabled) {
-                // Orbital 8D / 16D Mode for Balanced / Nightcore / Slowed
                 rotationPhase = (rotationPhase + phaseDelta) % (2.0 * Math.PI)
                 if (rotationPhase < 0) rotationPhase += 2.0 * Math.PI
 
@@ -413,14 +482,13 @@ class EightDAudioProcessor : BaseAudioProcessor() {
                 val is16D = cfg.spatialMode == SpatialMode.MODE_16D
                 val xPos: Float
                 val yPos: Float
+                var zElev = 0f
 
                 if (is16D) {
-                    // 16D multi-dimensional figure-8 orbital trajectory:
-                    // x moves smoothly left to right, y performs an acoustic infinity loop
-                    // creating an expansive, floating figure-eight orbit that seamlessly
-                    // stays in phase with 8D while providing enhanced 3D spatial depth
+                    // Dual-axis 16D figure-8 + vertical elevation ring
                     xPos = sin(angle).toFloat()
                     yPos = sin(2.0 * angle).toFloat()
+                    zElev = cos(angle).toFloat()
                 } else {
                     when (cfg.rotationPattern) {
                         RotationPattern.SINE -> {
@@ -428,10 +496,8 @@ class EightDAudioProcessor : BaseAudioProcessor() {
                             yPos = cos(angle).toFloat()
                         }
                         RotationPattern.TRIANGLE -> {
-                            val tri = (2.0 / Math.PI * asin(sin(angle))).toFloat()
-                            val triY = (2.0 / Math.PI * asin(sin(angle + Math.PI / 2.0))).toFloat()
-                            xPos = tri
-                            yPos = triY
+                            xPos = (2.0 / Math.PI * asin(sin(angle))).toFloat()
+                            yPos = (2.0 / Math.PI * asin(sin(angle + Math.PI / 2.0))).toFloat()
                         }
                         RotationPattern.SQUARE -> {
                             xPos = if (sin(angle) >= 0) 1.0f else -1.0f
@@ -440,35 +506,61 @@ class EightDAudioProcessor : BaseAudioProcessor() {
                     }
                 }
 
-                // apulsator formula aligned with ITD / binaural psychoacoustics
-                // Guaranteed minimum sound on opposite ear when reaching maximum deflection (10%)
-                // The opposite ear NEVER empties out or cuts to silence
-                val minOpposite = 0.10f
+                val minOpposite = 0.08f
                 val panRange = 1.0f - minOpposite
-                val panSweep = cfg.panDepth.coerceIn(0.2f, 1.0f) * panRange
+                val panSweep = cfg.panDepth.coerceIn(0.25f, 1.0f) * panRange
                 val gainL = (1.0f - panSweep) + panSweep * 0.5f * (1.0f - xPos)
                 val gainR = (1.0f - panSweep) + panSweep * 0.5f * (1.0f + xPos)
 
-                // Front-Back Distance Depth Cue (preserves 100% crisp high-frequency brilliance with zero muffling)
+                // Front-Back Pinna Depth Cue (palpable sensation of moving behind the head vs in front)
                 if (cfg.distanceFrontBackCue || is16D) {
+                    pinnaBackStateL += 0.40f * (hipL - pinnaBackStateL)
+                    pinnaBackStateR += 0.40f * (hipR - pinnaBackStateR)
                     val backness = (-yPos).coerceIn(0f, 1f)
-                    val backGain = 1.0f - backness * 0.08f
-                    hipL *= backGain
-                    hipR *= backGain
+                    val frontness = yPos.coerceIn(0f, 1f)
+                    val depthGain = (1.0f - backness * 0.16f) + frontness * 0.05f
+                    val pinnaBlend = backness * 0.24f
+                    hipL = (hipL * (1f - pinnaBlend) + pinnaBackStateL * pinnaBlend) * depthGain
+                    hipR = (hipR * (1f - pinnaBlend) + pinnaBackStateR * pinnaBlend) * depthGain
                 }
 
-                // Interaural Time Difference (ITD) - sample-accurate time delay with zero low-pass rolloff
+                // 16D Overhead / Proximity Swell & Dynamic Stage Breathing
+                if (is16D) {
+                    val mid16 = (hipL + hipR) * 0.5f
+                    val side16 = (hipL - hipR) * 0.5f * (1.0f + 0.16f * zElev)
+                    val prox = 1.0f + 0.10f * abs(xPos) * (0.5f + 0.5f * zElev)
+                    hipL = (mid16 + side16) * prox
+                    hipR = (mid16 - side16) * prox
+                }
+
+                // Head-Shadow ILD Filter on the shadowed/far ear (near ear stays 100% razor-sharp)
+                headShadowStateL += 0.22f * (hipL - headShadowStateL)
+                headShadowStateR += 0.22f * (hipR - headShadowStateR)
+                val shadowStrength = (abs(xPos) * panSweep * 0.40f).coerceIn(0f, 0.40f)
+                if (xPos > 0f) {
+                    hipL = hipL * (1f - shadowStrength) + headShadowStateL * shadowStrength
+                } else if (xPos < 0f) {
+                    hipR = hipR * (1f - shadowStrength) + headShadowStateR * shadowStrength
+                }
+
+                // Fractional-Sample Interpolated Interaural Time Difference (ITD)
+                // Linear interpolation eliminates integer-sample stepping grains during smooth rotation
                 if (cfg.binauralHrtf) {
                     itdBufferL[itdWriteIndex] = hipL
                     itdBufferR[itdWriteIndex] = hipR
 
-                    val delaySamples = kotlin.math.round((abs(xPos) * panSweep * maxItdSamples)).toInt().coerceIn(0, maxItdSamples.toInt())
+                    val delayFloat = (abs(xPos) * panSweep * maxItdSamples).coerceIn(0f, maxItdSamples)
+                    val d0 = delayFloat.toInt()
+                    val frac = delayFloat - d0
+                    val d1 = (d0 + 1).coerceAtMost(bufSize - 1)
                     if (xPos > 0f) {
-                        val readIdx = (itdWriteIndex - delaySamples + bufSize) % bufSize
-                        hipL = itdBufferL[readIdx]
+                        val idx0 = (itdWriteIndex - d0 + bufSize) % bufSize
+                        val idx1 = (itdWriteIndex - d1 + bufSize) % bufSize
+                        hipL = itdBufferL[idx0] * (1f - frac) + itdBufferL[idx1] * frac
                     } else if (xPos < 0f) {
-                        val readIdx = (itdWriteIndex - delaySamples + bufSize) % bufSize
-                        hipR = itdBufferR[readIdx]
+                        val idx0 = (itdWriteIndex - d0 + bufSize) % bufSize
+                        val idx1 = (itdWriteIndex - d1 + bufSize) % bufSize
+                        hipR = itdBufferR[idx0] * (1f - frac) + itdBufferR[idx1] * frac
                     }
                     itdWriteIndex = (itdWriteIndex + 1) % bufSize
                 }
@@ -477,55 +569,53 @@ class EightDAudioProcessor : BaseAudioProcessor() {
                 hipR *= gainR
             }
 
-            // 3. Mix [lo] and [hip]:
+            // 3. Recombine crossover bands
             var procL = loOutL + hipL
             var procR = loOutR + hipR
 
-            // Optional Crossfeed (if enabled)
-            if (cfg.crossfeed && cfg.crossfeedAmount > 0.05f) {
-                val alpha = 0.20f
+            // Binaural Crossfeed (only in Stereo mode so 8D/16D ear separation stays crisp)
+            if (!cfg.is8dEnabled && cfg.crossfeed && cfg.crossfeedAmount > 0.02f) {
+                val alpha = 0.22f
                 xfeedStateL += alpha * (procL - xfeedStateL)
                 xfeedStateR += alpha * (procR - xfeedStateR)
-                val blend = cfg.crossfeedAmount * 0.25f
+                val blend = cfg.crossfeedAmount.coerceIn(0f, 1f) * 0.26f
                 val blendedL = procL * (1f - blend) + xfeedStateR * blend
                 val blendedR = procR * (1f - blend) + xfeedStateL * blend
                 procL = blendedL
                 procR = blendedR
             }
 
-            // 4. Arena Wall Early Reflections:
-            // Feed-forward FIR reflections from auditorium walls (zero feedback = zero flutter/tearing)
-            if (useArenaRefl) {
+            // 4. Studio Early Reflections (subtle out-of-head room spatial air)
+            if (useEarlyRefl) {
                 val bufLen = arenaReflBufL.size
                 arenaReflBufL[arenaReflIdx] = procL
                 arenaReflBufR[arenaReflIdx] = procR
 
-                val r1L = arenaReflBufL[(arenaReflIdx - arenaTap1 + bufLen) % bufLen]
-                val r1R = arenaReflBufR[(arenaReflIdx - arenaTap2 + bufLen) % bufLen]
-                val r2CrossL = arenaReflBufR[(arenaReflIdx - arenaTap3 + bufLen) % bufLen]
-                val r2CrossR = arenaReflBufL[(arenaReflIdx - arenaTap3 + bufLen) % bufLen]
+                val r1L = arenaReflBufL[(arenaReflIdx - reflTap1 + bufLen) % bufLen]
+                val r1R = arenaReflBufR[(arenaReflIdx - reflTap2 + bufLen) % bufLen]
+                val r2CrossL = arenaReflBufR[(arenaReflIdx - reflTap3 + bufLen) % bufLen]
+                val r2CrossR = arenaReflBufL[(arenaReflIdx - reflTap3 + bufLen) % bufLen]
 
                 arenaReflIdx = (arenaReflIdx + 1) % bufLen
 
-                arenaReflDampL += 0.32f * ((r1L * 0.18f + r2CrossL * 0.10f) - arenaReflDampL)
-                arenaReflDampR += 0.32f * ((r1R * 0.18f + r2CrossR * 0.10f) - arenaReflDampR)
+                arenaReflDampL += 0.28f * ((r1L * 0.09f + r2CrossL * 0.05f) - arenaReflDampL)
+                arenaReflDampR += 0.28f * ((r1R * 0.09f + r2CrossR * 0.05f) - arenaReflDampR)
 
                 procL += arenaReflDampL
                 procR += arenaReflDampR
             }
 
+            // Schroeder-Moorer Decorrelated Reverb Tail
             if (cfg.reverbLevel > 0.02f) {
-                // Decorrelated Stereo Schroeder-Moorer Auditorium Reverberation Tail
                 val monoSpatial = (procL + procR) * 0.5f
                 val reverbIn = reverbHpFilter.process(monoSpatial)
                 val wet = processReverb(reverbIn, cfg.roomSize)
-                val wetGain = cfg.reverbLevel * 0.45f
+                val wetGain = cfg.reverbLevel.coerceIn(0f, 1f) * 0.45f
                 procL += wet.first * wetGain
                 procR += wet.second * wetGain
             }
 
-            // 5. Output Limiter:
-            // lavfi=[alimiter=limit=0.95]
+            // 5. True-Peak Limiter
             if (cfg.limiterEnabled || cfg.cleanBassProtection) {
                 val peak = max(abs(procL), abs(procR))
                 if (peak > peakEnvelope) {
@@ -547,7 +637,7 @@ class EightDAudioProcessor : BaseAudioProcessor() {
                 procR *= limiterGain
             }
 
-            // Sanitize against any NaN or Inf to guarantee audio never drops out
+            // NaN/Inf safeguard
             if (procL.isNaN() || procL.isInfinite()) {
                 procL = 0f
                 peakEnvelope = 0f
@@ -565,25 +655,35 @@ class EightDAudioProcessor : BaseAudioProcessor() {
                 peakEnvelope = 0f
             }
 
-            procL = procL.coerceIn(-1.0f, 1.0f)
-            procR = procR.coerceIn(-1.0f, 1.0f)
+            // Soft-knee analog saturation ceiling above 0.96f (prevents digital hard-clipping)
+            procL = softCeiling(procL).coerceIn(-1.0f, 1.0f)
+            procR = softCeiling(procR).coerceIn(-1.0f, 1.0f)
 
-            // Write 16-bit PCM output
+            // Feed FFT ring buffer with final processed mono tap
+            fftRingBuffer[fftWriteIdx] = (procL + procR) * 0.5f
+            fftWriteIdx = (fftWriteIdx + 1) and fftMask
+
             val outShortL = (procL * 32767.0f).toInt().coerceIn(-32768, 32767).toShort()
             val outShortR = (procR * 32767.0f).toInt().coerceIn(-32768, 32767).toShort()
             outputBuffer.putShort(outShortL)
             outputBuffer.putShort(outShortR)
 
-            // Periodically emit visualizer updates
             sampleCounter++
             if (sampleCounter >= 2048) {
                 sampleCounter = 0
                 _rotationAngleDegrees.value = (Math.toDegrees(rotationPhase).toFloat() % 360f)
-                emitSpectrumSnapshot()
+                emitFftSpectrumSnapshot()
             }
         }
         inputBuffer.position(inputBuffer.limit())
         outputBuffer.flip()
+    }
+
+    private fun softCeiling(x: Float): Float {
+        val ax = abs(x)
+        if (ax <= 0.96f) return x
+        val excess = (ax - 0.96f) / 0.04f
+        return sign(x) * (0.96f + 0.04f * tanh(excess))
     }
 
     private fun processReverb(inSample: Float, roomSize: Float): Pair<Float, Float> {
@@ -641,27 +741,102 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         )
     }
 
-    private fun accumulateBandEnergy(l: Float, r: Float) {
-        val energy = (abs(l) + abs(r)) * 0.5f
-        for (b in 0 until 10) {
-            bandEnergies[b] = bandEnergies[b] * 0.985f + energy * 0.015f
+    /**
+     * Computes a real 2048-point Radix-2 Cooley-Tukey FFT on the Hann-windowed ring buffer and
+     * aggregates exact logarithmic frequency energy across the 10 graphic EQ bands.
+     */
+    private fun emitFftSpectrumSnapshot() {
+        val n = fftSize
+        val start = fftWriteIdx
+        for (i in 0 until n) {
+            val sample = fftRingBuffer[(start + i) and fftMask]
+            val revIdx = bitReverseTable[i]
+            fftReal[revIdx] = sample * hannWindow[i]
+            fftImag[revIdx] = 0f
         }
-    }
 
-    private fun emitSpectrumSnapshot() {
+        // In-place iterative Cooley-Tukey FFT
+        var halfSize = 1
+        while (halfSize < n) {
+            val step = halfSize shl 1
+            val tableStep = n / step
+            var i = 0
+            while (i < n) {
+                var k = 0
+                for (j in 0 until halfSize) {
+                    val twiddleIdx = k * tableStep
+                    val wr = fftCosTable[twiddleIdx]
+                    val wi = fftSinTable[twiddleIdx]
+
+                    val evenIdx = i + j
+                    val oddIdx = evenIdx + halfSize
+
+                    val oddRe = fftReal[oddIdx]
+                    val oddIm = fftImag[oddIdx]
+
+                    val tRe = wr * oddRe - wi * oddIm
+                    val tIm = wr * oddIm + wi * oddRe
+
+                    val evenRe = fftReal[evenIdx]
+                    val evenIm = fftImag[evenIdx]
+
+                    fftReal[oddIdx] = evenRe - tRe
+                    fftImag[oddIdx] = evenIm - tIm
+                    fftReal[evenIdx] = evenRe + tRe
+                    fftImag[evenIdx] = evenIm + tIm
+                    k++
+                }
+                i += step
+            }
+            halfSize = step
+        }
+
+        val fs = sampleRate.toDouble()
+        val normScale = 2.0f / (n * 0.5f) // Compensate FFT N/2 and Hann coherent gain 0.5
+        val sqrt2 = sqrt(2.0)
+
         val snapshot = FloatArray(10)
         for (b in 0 until 10) {
-            val weight = 1.0f + (b * 0.15f)
-            snapshot[b] = (bandEnergies[b] * 3.5f * weight).coerceIn(0.05f, 1.0f)
+            val fc = EqPresets.FREQUENCIES[b]
+            val fLo = if (b == 0) 18.0 else fc / sqrt2
+            val fHi = if (b == 9) min(fs * 0.48, 20000.0) else fc * sqrt2
+
+            val kStart = floor(fLo * n / fs).toInt().coerceIn(1, (n / 2) - 2)
+            val kEnd = ceil(fHi * n / fs).toInt().coerceIn(kStart, (n / 2) - 1)
+
+            var maxMag = 0f
+            for (bin in kStart..kEnd) {
+                val re = fftReal[bin]
+                val im = fftImag[bin]
+                val mag = sqrt(re * re + im * im) * normScale
+                if (mag > maxMag) maxMag = mag
+            }
+
+            val db = 20.0f * log10(maxMag.coerceAtLeast(1e-5f))
+            // Map [-60 dBFS, -3 dBFS] -> [0.05f, 1.0f]
+            val normalized = ((db + 60.0f) / 57.0f).coerceIn(0.05f, 1.0f)
+            val prev = smoothedSpectrum[b]
+            val coeff = if (normalized > prev) 0.58f else 0.28f
+            val smoothed = (prev + (normalized - prev) * coeff).coerceIn(0.05f, 1.0f)
+            smoothedSpectrum[b] = smoothed
+            snapshot[b] = smoothed
         }
         _spectrumBands.value = snapshot
     }
 
-    private fun updateFilters() {
+    private fun updateFilters(cfg: AudioDspConfig) {
         val fs = sampleRate.toDouble()
-        val cfg = config
 
-        // 4th-Order Linkwitz-Riley Crossover at 220 Hz (2 cascaded 2nd-order Butterworth filters per channel)
+        val autoHeadroomDb = EqPresets.computeAutoHeadroomDb(cfg, fs)
+        val totalPreGainDb = (cfg.preGainDb + cfg.eqPreampDb + autoHeadroomDb).coerceIn(-24.0f, 12.0f)
+        targetPreGainFactor = if (abs(totalPreGainDb) > 0.01f) {
+            10.0.pow(totalPreGainDb / 20.0).toFloat()
+        } else {
+            1.0f
+        }
+        targetStereoWidth = cfg.stereoWidth.coerceIn(0.4f, 1.8f)
+
+        // 4th-Order Linkwitz-Riley Crossover
         val splitFreq = cfg.crossoverSplitHz.toDouble().coerceIn(80.0, 500.0)
         crossoverLp1L.setLowPass(freq = splitFreq, sampleRate = fs)
         crossoverLp2L.setLowPass(freq = splitFreq, sampleRate = fs)
@@ -673,41 +848,49 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         crossoverHp1R.setHighPass(freq = splitFreq, sampleRate = fs)
         crossoverHp2R.setHighPass(freq = splitFreq, sampleRate = fs)
 
-        // Bass Boost (Low Shelf at 80/100 Hz or selected freq)
+        // Bass Boost (Low Shelf)
         @Suppress("SENSELESS_COMPARISON")
         val bassFreq = (if (cfg.bassBoostFreq != null) cfg.bassBoostFreq.freqHz else 80).toDouble()
-        val bassGain = if (cfg.safeMode) cfg.bassBoostGainDb.coerceIn(0f, 6f).toDouble() else cfg.bassBoostGainDb.toDouble()
+        val bassGain = if (cfg.bassBoostEnabled) {
+            (if (cfg.safeMode) cfg.bassBoostGainDb.coerceIn(0f, 6f) else cfg.bassBoostGainDb).toDouble()
+        } else 0.0
+        hasActiveBassBoost = abs(bassGain) >= 0.05
         bassFilterL.setLowShelf(bassFreq, gainDb = bassGain, sampleRate = fs)
         bassFilterR.setLowShelf(bassFreq, gainDb = bassGain, sampleRate = fs)
 
-        // Treble Clarity (High Shelf at 8000 Hz or selected freq)
-        val trebleFreq = cfg.trebleFreqHz.toDouble()
-        val trebleGain = if (cfg.safeMode) cfg.trebleClarityDb.coerceIn(0f, 6f).toDouble() else cfg.trebleClarityDb.toDouble()
+        // Treble Clarity (High Shelf)
+        val trebleFreq = cfg.trebleFreqHz.toDouble().coerceIn(2000.0, (fs * 0.45).coerceAtLeast(3000.0))
+        val trebleGain = (if (cfg.safeMode) cfg.trebleClarityDb.coerceIn(0f, 6f) else cfg.trebleClarityDb).toDouble()
+        hasActiveTrebleClarity = abs(trebleGain) >= 0.05
         trebleFilterL.setHighShelf(freq = trebleFreq, gainDb = trebleGain, sampleRate = fs)
         trebleFilterR.setHighShelf(freq = trebleFreq, gainDb = trebleGain, sampleRate = fs)
 
-        // Vocal Presence Peaking Filter (2200 Hz with Q=0.75)
-        // Subtle, balanced vocal lift that sits naturally in the mix with the instruments
-        val vocGain = if (cfg.activeProfile == AudioProfile.BALANCED && cfg.is8dEnabled) 0.9 else 0.0
-        vocalFilterL.setPeakingEQ(freq = 2200.0, gainDb = vocGain, sampleRate = fs, Q = 0.75)
-        vocalFilterR.setPeakingEQ(freq = 2200.0, gainDb = vocGain, sampleRate = fs, Q = 0.75)
+        // Vocal Presence Peaking Filter (2200 Hz, Q=0.80)
+        val vocGain = cfg.vocalPresenceDb.toDouble().coerceIn(-6.0, 8.0)
+        hasActiveVocalFilter = abs(vocGain) >= 0.05
+        vocalFilterL.setPeakingEQ(freq = 2200.0, gainDb = vocGain, sampleRate = fs, Q = 0.80)
+        vocalFilterR.setPeakingEQ(freq = 2200.0, gainDb = vocGain, sampleRate = fs, Q = 0.80)
 
-        // Sound Definition Peaking Filter (3600 Hz with Q=0.90)
-        // Crisp transient edge and instrument separation faithful to original recording
-        val defGain = if (cfg.activeProfile == AudioProfile.BALANCED && cfg.is8dEnabled) 1.2 else 0.0
-        definitionFilterL.setPeakingEQ(freq = 3600.0, gainDb = defGain, sampleRate = fs, Q = 0.90)
-        definitionFilterR.setPeakingEQ(freq = 3600.0, gainDb = defGain, sampleRate = fs, Q = 0.90)
+        // Sound Definition Peaking Filter (3600 Hz, Q=0.95)
+        val defGain = EqPresets.computeDefinitionGainDb(cfg)
+        hasActiveDefFilter = abs(defGain) >= 0.05
+        definitionFilterL.setPeakingEQ(freq = 3600.0, gainDb = defGain, sampleRate = fs, Q = 0.95)
+        definitionFilterR.setPeakingEQ(freq = 3600.0, gainDb = defGain, sampleRate = fs, Q = 0.95)
 
-        // 10-Band Graphic Equalizer Filter Chain (PipeWire bq_peaking from EQ-Clone)
+        // 10-Band Proportional-Q Graphic Equalizer Filter Chain
         val eqBands = cfg.eqBands
+        var anyEqActive = false
         for (b in 0 until 10) {
-            val gainDb = if (cfg.eqEnabled) (eqBands.getOrElse(b) { 0f }).toDouble() else 0.0
+            val gainDb = if (cfg.eqEnabled) (eqBands.getOrElse(b) { 0f }).toDouble().coerceIn(-12.0, 12.0) else 0.0
+            if (abs(gainDb) >= 0.05) anyEqActive = true
             val safeFreq = EqPresets.FREQUENCIES[b].coerceIn(10.0, (fs * 0.45).coerceAtLeast(1000.0))
-            eqFiltersL[b].setPeakingEQ(freq = safeFreq, gainDb = gainDb, sampleRate = fs, Q = EqPresets.BAND_Q)
-            eqFiltersR[b].setPeakingEQ(freq = safeFreq, gainDb = gainDb, sampleRate = fs, Q = EqPresets.BAND_Q)
+            val q = EqPresets.bandQForGain(b, gainDb)
+            eqFiltersL[b].setPeakingEQ(freq = safeFreq, gainDb = gainDb, sampleRate = fs, Q = q)
+            eqFiltersR[b].setPeakingEQ(freq = safeFreq, gainDb = gainDb, sampleRate = fs, Q = q)
         }
+        hasActiveEqBands = anyEqActive
 
-        // Reverb Low-Cut Filter (High-pass at crossover split frequency to eliminate drum/bass rumble from reverb)
+        // Reverb Low-Cut Filter
         reverbHpFilter.setHighPass(freq = cfg.crossoverSplitHz.toDouble().coerceAtLeast(220.0), sampleRate = fs)
     }
 
@@ -716,8 +899,10 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         itdBufferL.fill(0f)
         itdBufferR.fill(0f)
         itdWriteIndex = 0
-        pinnaStateL = 0f
-        pinnaStateR = 0f
+        headShadowStateL = 0f
+        headShadowStateR = 0f
+        pinnaBackStateL = 0f
+        pinnaBackStateR = 0f
         xfeedStateL = 0f
         xfeedStateR = 0f
         peakEnvelope = 0f
@@ -736,6 +921,12 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         surroundPinnaR = 0f
         microAirFilterL = 0f
         microAirFilterR = 0f
+        fftRingBuffer.fill(0f)
+        fftWriteIdx = 0
+        sampleCounter = 0
+        smoothedSpectrum.fill(0.05f)
+        currentPreGainFactor = targetPreGainFactor
+        currentStereoWidth = targetStereoWidth
         crossoverLp1L.reset()
         crossoverLp2L.reset()
         crossoverLp1R.reset()
@@ -779,7 +970,7 @@ class EightDAudioProcessor : BaseAudioProcessor() {
 }
 
 /**
- * 2nd-Order Direct Form II IIR Biquad Filter.
+ * 2nd-Order Direct Form I IIR Biquad Filter (64-bit Double internal state for sub-bass precision).
  * Implementation based on Robert Bristow-Johnson's Audio EQ Cookbook.
  */
 class BiquadFilter {
@@ -803,7 +994,7 @@ class BiquadFilter {
 
     fun process(x: Float): Float {
         val xIn = x.toDouble()
-        var y = b0 * xIn + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
+        val y = b0 * xIn + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
         if (y.isNaN() || y.isInfinite()) {
             reset()
             return 0f
@@ -854,6 +1045,11 @@ class BiquadFilter {
     }
 
     fun setLowShelf(freq: Double, gainDb: Double, sampleRate: Double) {
+        if (abs(gainDb) < 0.05) {
+            b0 = 1.0; b1 = 0.0; b2 = 0.0
+            a1 = 0.0; a2 = 0.0
+            return
+        }
         val a = 10.0.pow(gainDb / 40.0)
         val w0 = 2.0 * Math.PI * freq / sampleRate
         val cosW0 = cos(w0)
@@ -874,6 +1070,11 @@ class BiquadFilter {
     }
 
     fun setHighShelf(freq: Double, gainDb: Double, sampleRate: Double) {
+        if (abs(gainDb) < 0.05) {
+            b0 = 1.0; b1 = 0.0; b2 = 0.0
+            a1 = 0.0; a2 = 0.0
+            return
+        }
         val a = 10.0.pow(gainDb / 40.0)
         val w0 = 2.0 * Math.PI * freq / sampleRate
         val cosW0 = cos(w0)

@@ -91,9 +91,6 @@ fun SettingsScreen(
         }
     }
 
-    var gaplessPlaybackEnabled by remember { mutableStateOf(true) }
-    var autoCacheEnabled by remember { mutableStateOf(true) }
-
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
@@ -126,21 +123,13 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.width(14.dp))
 
-                Column {
-                    Text(
-                        text = "Settings",
-                        fontSize = 20.sp,
-                        fontFamily = CircularFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        color = RogTextPrimary
-                    )
-                    Text(
-                        text = "Preferences & Audio Engine",
-                        fontSize = 11.5.sp,
-                        fontFamily = CircularFontFamily,
-                        color = RogTextSecondary
-                    )
-                }
+                Text(
+                    text = "Settings",
+                    fontSize = 20.sp,
+                    fontFamily = CircularFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    color = RogTextPrimary
+                )
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -668,82 +657,6 @@ fun SettingsScreen(
                     HorizontalDivider(color = RogDivider)
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Gapless Playback
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Gapless Playback",
-                                fontSize = 14.sp,
-                                fontFamily = CircularFontFamily,
-                                fontWeight = FontWeight.SemiBold,
-                                color = RogTextPrimary
-                            )
-                            Text(
-                                text = "Seamless transitions without silence between songs",
-                                fontSize = 11.5.sp,
-                                fontFamily = CircularFontFamily,
-                                color = RogTextSecondary
-                            )
-                        }
-
-                        Switch(
-                            checked = gaplessPlaybackEnabled,
-                            onCheckedChange = { gaplessPlaybackEnabled = it },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.Black,
-                                checkedTrackColor = RogTextGold,
-                                uncheckedThumbColor = RogTextSecondary,
-                                uncheckedTrackColor = RogSurfaceHighlight
-                            )
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-                    HorizontalDivider(color = RogDivider)
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Auto Cache
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Auto-Cache Streams",
-                                fontSize = 14.sp,
-                                fontFamily = CircularFontFamily,
-                                fontWeight = FontWeight.SemiBold,
-                                color = RogTextPrimary
-                            )
-                            Text(
-                                text = "Save played tracks for quick instant re-play",
-                                fontSize = 11.5.sp,
-                                fontFamily = CircularFontFamily,
-                                color = RogTextSecondary
-                            )
-                        }
-
-                        Switch(
-                            checked = autoCacheEnabled,
-                            onCheckedChange = { autoCacheEnabled = it },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.Black,
-                                checkedTrackColor = RogTextGold,
-                                uncheckedThumbColor = RogTextSecondary,
-                                uncheckedTrackColor = RogSurfaceHighlight
-                            )
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-                    HorizontalDivider(color = RogDivider)
-                    Spacer(modifier = Modifier.height(14.dp))
-
                     // Notification Card Theme
                     val notifPrefs = remember(context) { context.getSharedPreferences("koi_notif_prefs", Context.MODE_PRIVATE) }
                     var notifStyle by remember { mutableStateOf(notifPrefs.getInt("koi_notif_style", 0)) }
@@ -1229,60 +1142,6 @@ fun SettingsScreen(
                                 }
                             }
                         }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    OutlinedButton(
-                        onClick = onPreviewUpdate,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(40.dp),
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, RogDivider),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = RogTextGold)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = RogGoldPrimary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Preview What's New Walkthrough",
-                            fontSize = 12.5.sp,
-                            fontFamily = CircularFontFamily,
-                            fontWeight = FontWeight.SemiBold,
-                            color = RogTextGold
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedButton(
-                        onClick = onReplayTutorial,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(40.dp),
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, RogDivider),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = RogTextPrimary)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = RogTextGold,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "🎮 Replay Game Mechanics Tutorial",
-                            fontSize = 12.5.sp,
-                            fontFamily = CircularFontFamily,
-                            fontWeight = FontWeight.SemiBold,
-                            color = RogTextPrimary
-                        )
                     }
                 }
             }

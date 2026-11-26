@@ -251,10 +251,7 @@ class EightDAudioProcessorTest {
 
     @Test
     fun testMinuteSoundsExtractedAcrossAllProfiles() {
-        val profiles = arrayOf(
-            AudioProfile.BALANCED,
-            AudioProfile.SPATIAL_360
-        )
+        val profiles = AudioProfile.values()
 
         for (profile in profiles) {
             val processor = EightDAudioProcessor()
@@ -363,10 +360,10 @@ class EightDAudioProcessorTest {
     @Test
     fun testBalancedProfileRotationSpeedIncrease() {
         val cfg8D = AudioDspConfig.createConfig(SpatialMode.MODE_8D, AudioProfile.BALANCED)
-        assertEquals("Balanced 8D rotation speed should be 11.0s (faster than 13.0s)", 11.0f, cfg8D.rotationSpeedSeconds, 0.01f)
+        assertEquals("Balanced 8D rotation speed should be 9.5s", 9.5f, cfg8D.rotationSpeedSeconds, 0.01f)
 
         val cfg16D = AudioDspConfig.createConfig(SpatialMode.MODE_16D, AudioProfile.BALANCED)
-        assertEquals("Balanced 16D rotation speed should be 9.0s", 9.0f, cfg16D.rotationSpeedSeconds, 0.01f)
+        assertEquals("Balanced 16D rotation speed should be 7.0s", 7.0f, cfg16D.rotationSpeedSeconds, 0.01f)
     }
 
     @Test
@@ -486,23 +483,42 @@ class EightDAudioProcessorTest {
 
             when (profile) {
                 AudioProfile.BALANCED -> {
-                    assertEquals(11.0f, config.rotationSpeedSeconds, 0.01f)
-                    assertEquals(0.80f, config.panDepth, 0.01f)
+                    assertEquals(9.5f, config.rotationSpeedSeconds, 0.01f)
+                    assertEquals(0.88f, config.panDepth, 0.01f)
                     assertEquals(2.8f, config.bassBoostGainDb, 0.01f)
-                    assertEquals(1.1f, config.trebleClarityDb, 0.01f)
-                    assertEquals(0.05f, config.reverbLevel, 0.01f)
+                    assertEquals(1.2f, config.trebleClarityDb, 0.01f)
+                    assertEquals(0.08f, config.reverbLevel, 0.01f)
                     assertEquals(1.0f, config.playbackSpeed, 0.01f)
                     assertEquals(0.0f, config.pitchSemitones, 0.01f)
                 }
+                AudioProfile.IMMERSIVE_STAGE -> {
+                    assertEquals(8.5f, config.rotationSpeedSeconds, 0.01f)
+                    assertEquals(0.94f, config.panDepth, 0.01f)
+                    assertEquals(4.2f, config.bassBoostGainDb, 0.01f)
+                    assertEquals(2.2f, config.trebleClarityDb, 0.01f)
+                    assertTrue("Early reflections must be enabled", config.useDualTapEcho)
+                    assertFalse("Crossfeed must stay off in 8D to keep pan sharp", config.crossfeed)
+                }
                 AudioProfile.SPATIAL_360 -> {
-                    assertEquals(13.0f * 1.15f, config.rotationSpeedSeconds, 0.01f)
-                    assertEquals(0.28f, config.panDepth, 0.01f)
-                    assertEquals(3.2f, config.bassBoostGainDb, 0.01f)
-                    assertEquals(1.2f, config.trebleClarityDb, 0.01f)
-                    assertEquals(0.08f, config.reverbLevel, 0.01f)
-                    assertEquals(0.22f, config.crossfeedAmount, 0.01f)
+                    assertEquals(10.5f, config.rotationSpeedSeconds, 0.01f)
+                    assertEquals(0.58f, config.panDepth, 0.01f)
+                    assertEquals(3.4f, config.bassBoostGainDb, 0.01f)
+                    assertEquals(1.5f, config.trebleClarityDb, 0.01f)
+                    assertEquals(0.14f, config.reverbLevel, 0.01f)
                     assertEquals(1.0f, config.playbackSpeed, 0.01f)
                     assertEquals(0.0f, config.pitchSemitones, 0.01f)
+                }
+                AudioProfile.ABSOLUTE_HEARING -> {
+                    assertEquals(11.5f, config.rotationSpeedSeconds, 0.01f)
+                    assertEquals(0.78f, config.panDepth, 0.01f)
+                    assertEquals(3.2f, config.vocalPresenceDb, 0.01f)
+                    assertEquals(0.95f, config.microDetailLevel, 0.01f)
+                }
+                AudioProfile.NIGHT_CONCERT -> {
+                    assertEquals(13.5f, config.rotationSpeedSeconds, 0.01f)
+                    assertEquals(0.84f, config.panDepth, 0.01f)
+                    assertEquals(5.0f, config.bassBoostGainDb, 0.01f)
+                    assertEquals(0.26f, config.reverbLevel, 0.01f)
                 }
             }
         }
@@ -518,19 +534,33 @@ class EightDAudioProcessorTest {
 
             when (profile) {
                 AudioProfile.BALANCED -> {
-                    assertEquals(9.0f, config.rotationSpeedSeconds, 0.01f)
-                    assertEquals(0.78f, config.panDepth, 0.01f)
+                    assertEquals(7.0f, config.rotationSpeedSeconds, 0.01f)
+                    assertEquals(0.92f, config.panDepth, 0.01f)
                     assertEquals(2.8f, config.bassBoostGainDb, 0.01f)
-                    assertEquals(1.1f, config.trebleClarityDb, 0.01f)
-                    assertEquals(0.05f, config.reverbLevel, 0.01f)
-                }
-                AudioProfile.SPATIAL_360 -> {
-                    assertEquals(9.0f * 1.15f, config.rotationSpeedSeconds, 0.01f)
-                    assertEquals(0.28f, config.panDepth, 0.01f)
-                    assertEquals(3.2f, config.bassBoostGainDb, 0.01f)
                     assertEquals(1.2f, config.trebleClarityDb, 0.01f)
                     assertEquals(0.08f, config.reverbLevel, 0.01f)
-                    assertEquals(0.22f, config.crossfeedAmount, 0.01f)
+                }
+                AudioProfile.IMMERSIVE_STAGE -> {
+                    assertEquals(7.5f, config.rotationSpeedSeconds, 0.01f)
+                    assertEquals(0.96f, config.panDepth, 0.01f)
+                    assertTrue(config.useDualTapEcho)
+                }
+                AudioProfile.SPATIAL_360 -> {
+                    assertEquals(8.0f, config.rotationSpeedSeconds, 0.01f)
+                    assertEquals(0.68f, config.panDepth, 0.01f)
+                    assertEquals(3.4f, config.bassBoostGainDb, 0.01f)
+                    assertEquals(1.5f, config.trebleClarityDb, 0.01f)
+                    assertEquals(0.14f, config.reverbLevel, 0.01f)
+                }
+                AudioProfile.ABSOLUTE_HEARING -> {
+                    assertEquals(8.5f, config.rotationSpeedSeconds, 0.01f)
+                    assertEquals(3.2f, config.vocalPresenceDb, 0.01f)
+                    assertEquals(0.95f, config.microDetailLevel, 0.01f)
+                }
+                AudioProfile.NIGHT_CONCERT -> {
+                    assertEquals(10.0f, config.rotationSpeedSeconds, 0.01f)
+                    assertEquals(5.0f, config.bassBoostGainDb, 0.01f)
+                    assertEquals(0.72f, config.roomSize, 0.01f)
                 }
             }
         }
@@ -539,11 +569,16 @@ class EightDAudioProcessorTest {
     @Test
     fun test10BandGraphicEqualizerAndPresets() {
         val presets = EqPresets.PRESETS
-        assertEquals(10, presets.size)
+        assertEquals(15, presets.size)
         assertTrue(presets.containsKey("Flat"))
+        assertTrue(presets.containsKey("Koi Immersion"))
+        assertTrue(presets.containsKey("Harman Reference"))
+        assertTrue(presets.containsKey("Absolute Hearing"))
+        assertTrue(presets.containsKey("Late Night Comfort"))
         assertTrue(presets.containsKey("Bass"))
         assertTrue(presets.containsKey("Treble"))
         assertTrue(presets.containsKey("Vocal"))
+        assertTrue(presets.containsKey("Electronic"))
         assertTrue(presets.containsKey("Pop"))
         assertTrue(presets.containsKey("Rock"))
         assertTrue(presets.containsKey("Jazz"))
@@ -551,13 +586,12 @@ class EightDAudioProcessorTest {
         assertTrue(presets.containsKey("Nightcore"))
         assertTrue(presets.containsKey("Slowed + Reverbed"))
 
-        // Test EQ processing
+        // Test EQ processing across all curated presets
         val processor = EightDAudioProcessor()
         val format = AudioProcessor.AudioFormat(44100, 2, C.ENCODING_PCM_16BIT)
         processor.configure(format)
         processor.flush()
 
-        // Enable Rock preset from EQ-Clone
         val rockBands = presets["Rock"]!!.toList()
         processor.config = AudioDspConfig(
             eqEnabled = true,
@@ -578,6 +612,127 @@ class EightDAudioProcessorTest {
         val outBuffer = processor.output
         assertTrue(outBuffer.hasRemaining())
         assertEquals(frameCount * 4, outBuffer.remaining())
+    }
+
+    @Test
+    fun testAutoHeadroomPreventsClippingOnHeavyEqBoosts() {
+        val bassHeavyCfg = AudioDspConfig(
+            eqEnabled = true,
+            eqPreset = "Custom",
+            eqBands = listOf(12f, 12f, 10f, 6f, 0f, 0f, 0f, 0f, 6f, 8f),
+            autoHeadroomEnabled = true
+        )
+        val peakBoost = EqPresets.computeEqPeakBoostDb(bassHeavyCfg)
+        val headroom = EqPresets.computeAutoHeadroomDb(bassHeavyCfg)
+        assertTrue("Overlapping 12dB bands must detect composite peak > 12dB (peak=$peakBoost)", peakBoost > 12f)
+        assertTrue("Auto-headroom must attenuate significantly (headroom=$headroom)", headroom < -9f)
+
+        val processor = EightDAudioProcessor()
+        processor.configure(AudioProcessor.AudioFormat(48000, 2, C.ENCODING_PCM_16BIT))
+        processor.flush()
+        processor.config = bassHeavyCfg
+
+        val frameCount = 48000
+        val inBuffer = ByteBuffer.allocate(frameCount * 4).order(ByteOrder.LITTLE_ENDIAN)
+        for (i in 0 until frameCount) {
+            val s = (kotlin.math.sin(2.0 * Math.PI * 63.0 * i / 48000.0) * 24000.0).toInt().toShort()
+            inBuffer.putShort(s)
+            inBuffer.putShort(s)
+        }
+        inBuffer.flip()
+
+        processor.queueInput(inBuffer)
+        val outBuffer = processor.output
+        var clippedFrames = 0
+        while (outBuffer.hasRemaining()) {
+            val l = abs(outBuffer.short.toInt())
+            val r = abs(outBuffer.short.toInt())
+            if (l >= 32766 || r >= 32766) clippedFrames++
+        }
+        assertTrue("Auto-headroom + soft limiter must keep hard-clipped samples minimal ($clippedFrames)", clippedFrames < 50)
+    }
+
+    @Test
+    fun testFrequencyResponseCurveEvaluatesPeaksAccurately() {
+        val immersionCfg = AudioDspConfig(
+            eqEnabled = true,
+            eqPreset = "Absolute Hearing",
+            eqBands = EqPresets.PRESETS["Absolute Hearing"]!!.toList()
+        )
+        val curve = EqPresets.computeFrequencyResponseCurve(immersionCfg, pointCount = 64, includeToneStage = false)
+        assertEquals(64, curve.size)
+        val gainAt4k = EqPresets.computeFrequencyResponseDb(immersionCfg, 4000.0, includeToneStage = false)
+        val gainAt250 = EqPresets.computeFrequencyResponseDb(immersionCfg, 250.0, includeToneStage = false)
+        assertTrue("Absolute Hearing should lift 4 kHz presence (gainAt4k=$gainAt4k)", gainAt4k > 3.5)
+        assertTrue("Absolute Hearing should clean 250 Hz mud (gainAt250=$gainAt250)", gainAt250 < -1.0)
+    }
+
+    @Test
+    fun testFftSpectrumAnalyzerDistinguishesLowVsHighFrequencies() {
+        val processor = EightDAudioProcessor()
+        processor.configure(AudioProcessor.AudioFormat(48000, 2, C.ENCODING_PCM_16BIT))
+        processor.flush()
+        processor.config = AudioDspConfig.createConfig(SpatialMode.OFF, AudioProfile.BALANCED)
+
+        // Feed 63 Hz bass tone (band index 1)
+        val frames = 4096
+        val bassBuf = ByteBuffer.allocate(frames * 4).order(ByteOrder.LITTLE_ENDIAN)
+        for (i in 0 until frames) {
+            val s = (kotlin.math.sin(2.0 * Math.PI * 63.0 * i / 48000.0) * 20000.0).toInt().toShort()
+            bassBuf.putShort(s)
+            bassBuf.putShort(s)
+        }
+        bassBuf.flip()
+        processor.queueInput(bassBuf)
+        val bassSpectrum = processor.spectrumBands.value
+        assertTrue(
+            "63 Hz bass input must light up band 1 (${bassSpectrum[1]}) much higher than 8 kHz band 8 (${bassSpectrum[8]})",
+            bassSpectrum[1] > bassSpectrum[8] + 0.35f
+        )
+
+        // Flush and feed 8 kHz treble tone (band index 8)
+        processor.flush()
+        val trebleBuf = ByteBuffer.allocate(frames * 4).order(ByteOrder.LITTLE_ENDIAN)
+        for (i in 0 until frames) {
+            val s = (kotlin.math.sin(2.0 * Math.PI * 8000.0 * i / 48000.0) * 20000.0).toInt().toShort()
+            trebleBuf.putShort(s)
+            trebleBuf.putShort(s)
+        }
+        trebleBuf.flip()
+        processor.queueInput(trebleBuf)
+        val trebleSpectrum = processor.spectrumBands.value
+        assertTrue(
+            "8 kHz treble input must light up band 8 (${trebleSpectrum[8]}) much higher than 63 Hz band 1 (${trebleSpectrum[1]})",
+            trebleSpectrum[8] > trebleSpectrum[1] + 0.35f
+        )
+    }
+
+    @Test
+    fun testStereoProfilesDifferentiateSoundstageInOffMode() {
+        for (profile in AudioProfile.values()) {
+            val cfg = AudioDspConfig.createConfig(SpatialMode.OFF, profile)
+            assertEquals(SpatialMode.OFF, cfg.spatialMode)
+            assertFalse(cfg.is8dEnabled)
+            if (profile != AudioProfile.BALANCED) {
+                assertTrue(
+                    "Non-balanced stereo profile $profile should have active immersion/clarity character",
+                    cfg.stereoWidth > 1.05f || cfg.microDetailLevel >= 0.5f || cfg.crossfeed
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testLegacyV1ConfigMigrationFromJson() {
+        val legacyJson = """{"masterEnabled":true,"spatialMode":"MODE_8D","activeProfile":"CONCERT_HALL","is8dEnabled":true,"eqEnabled":true,"eqPreset":"Bass","eqBands":[5,7,5,2,1,0,0,0,1,2]}"""
+        val migrated = AudioDspConfig.fromJson(legacyJson)
+        assertTrue("Legacy config must migrate non-null", migrated != null)
+        migrated!!
+        assertEquals(AudioDspConfig.CURRENT_CONFIG_VERSION, migrated.configVersion)
+        assertEquals(AudioProfile.NIGHT_CONCERT, migrated.activeProfile)
+        assertTrue("Migrated config must enable auto-headroom guard", migrated.autoHeadroomEnabled)
+        assertTrue("Migrated config must enable limiter", migrated.limiterEnabled)
+        assertEquals(10, migrated.eqBands.size)
     }
 
     @Test

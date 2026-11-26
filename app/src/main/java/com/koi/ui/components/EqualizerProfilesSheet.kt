@@ -1,5 +1,6 @@
 package com.koi.ui.components
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -9,47 +10,64 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.koi.backend.audio.AudioDspConfig
+import com.koi.backend.audio.AudioProfile
+import com.koi.backend.audio.BassBoostFrequency
 import com.koi.backend.audio.EqPresets
 import com.koi.ui.theme.*
-import kotlin.math.roundToInt
+import kotlin.math.abs
+import kotlin.math.round
+
+private val AquaCutAccent = Color(0xFF48CAE4)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EqualizerProfilesSheet(
     dspConfig: AudioDspConfig,
     selectedPreset: String,
+    spectrumBands: FloatArray = FloatArray(10) { 0.05f },
+    customPresets: Map<String, AudioDspConfig> = emptyMap(),
     showResetButton: Boolean = true,
     onSelectPreset: (String) -> Unit,
+    onProfileSelect: (AudioProfile) -> Unit = {},
+    onSaveCustomPreset: (String) -> Boolean = { false },
+    onDeleteCustomPreset: (String) -> Unit = {},
+    onResetEqualizer: () -> Unit = { onSelectPreset("Flat") },
     onConfigChange: (AudioDspConfig) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val presets = EqPresets.PRESETS.toList()
-    val bandLabels = listOf("31", "63", "125", "250", "500", "1k", "2k", "4k", "8k", "16k")
-
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var selectedTab by remember { mutableIntStateOf(0) }
+    var showSaveDialog by remember { mutableStateOf(false) }
+    var customNameInput by remember { mutableStateOf("") }
 
-    // Local state for the 10-band slider faders
-    var currentBands by remember(dspConfig.eqBands, selectedPreset) {
-        val initial = if (dspConfig.eqBands.size == 10) {
-            dspConfig.eqBands.toFloatArray()
-        } else {
-            EqPresets.PRESETS[selectedPreset]?.clone() ?: FloatArray(10) { 0f }
-        }
-        mutableStateOf(initial)
+    val activeBands = remember(dspConfig.eqBands, selectedPreset) {
+        if (dspConfig.eqBands.size == 10) dspConfig.eqBands else List(10) { 0f }
     }
 
     ModalBottomSheet(
@@ -57,7 +75,7 @@ fun EqualizerProfilesSheet(
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
         containerColor = RogSurfaceDark,
-        scrimColor = RogObsidian.copy(alpha = 0.75f),
+        scrimColor = RogObsidian.copy(alpha = 0.78f),
         dragHandle = {
             Box(
                 modifier = Modifier
@@ -67,15 +85,17 @@ fun EqualizerProfilesSheet(
                     .clip(RoundedCornerShape(2.dp))
                     .background(RogSurfaceHighlight)
             )
-        }
+        },
+        modifier = Modifier.fillMaxHeight(0.90f)
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 36.dp)
         ) {
-            // Header with EQ status and Reset button
+            // Minimal Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -85,41 +105,38 @@ fun EqualizerProfilesSheet(
                     Icon(
                         imageVector = Icons.Default.GraphicEq,
                         contentDescription = "Equalizer",
-                        tint = if (dspConfig.eqEnabled) RogTextGold else RogTextSecondary,
+                        tint = if (dspConfig.eqEnabled && !dspConfig.abBypass) RogTextGold else RogTextSecondary,
                         modifier = Modifier.size(22.dp)
                     )
                     Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "EQUALIZER",
-                                fontSize = 12.sp,
-                                fontFamily = CircularFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                color = if (dspConfig.eqEnabled) RogTextGold else RogTextSecondary,
-                                letterSpacing = 1.sp
-                            )
-                            if (!dspConfig.eqEnabled) {
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "(Bypassed)",
-                                    fontSize = 11.sp,
-                                    fontFamily = CircularFontFamily,
-                                    color = RogTextMuted
-                                )
-                            }
-                        }
-                        Text(
-                            text = "10-Band Graphic Acoustic Tuning",
-                            fontSize = 13.5.sp,
-                            fontFamily = CircularFontFamily,
-                            fontWeight = FontWeight.Normal,
-                            color = RogTextSecondary
-                        )
-                    }
+                    Text(
+                        text = "Equalizer",
+                        fontSize = 18.sp,
+                        fontFamily = CircularFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        color = RogTextPrimary
+                    )
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (dspConfig.abBypass) Color(0xFFC62828) else RogSurfaceMedium)
+                            .clickable { onConfigChange(dspConfig.copy(abBypass = !dspConfig.abBypass)) }
+                            .padding(horizontal = 9.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            text = if (dspConfig.abBypass) "RAW" else "A/B",
+                            fontSize = 10.5.sp,
+                            fontFamily = CircularFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            color = if (dspConfig.abBypass) Color.White else RogTextSecondary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
                     Switch(
                         checked = dspConfig.eqEnabled,
                         onCheckedChange = { isChecked ->
@@ -134,60 +151,54 @@ fun EqualizerProfilesSheet(
                     )
 
                     if (showResetButton) {
-                        Spacer(modifier = Modifier.width(6.dp))
-
-                        TextButton(
-                            onClick = {
-                                onSelectPreset("Flat")
-                            }
+                        IconButton(
+                            onClick = onResetEqualizer,
+                            modifier = Modifier.size(32.dp)
                         ) {
-                            Text(
-                                text = "Reset",
-                                fontSize = 12.sp,
-                                fontFamily = CircularFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                color = RogTextGold
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Reset",
+                                tint = RogTextGold,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Presets Scrollable Pill Row
-            Text(
-                text = "PRESETS",
-                fontSize = 10.sp,
-                fontFamily = CircularFontFamily,
-                fontWeight = FontWeight.Bold,
-                color = RogTextSecondary,
-                letterSpacing = 1.sp
+            // Visual Curve & Live Spectrum Canvas (zero text clutter)
+            FrequencyResponseCard(
+                dspConfig = dspConfig,
+                spectrumBands = spectrumBands
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
+            // 2-Tab Switcher
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(RogObsidian)
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                presets.forEach { (name, presetBands) ->
-                    val isSelected = selectedPreset == name
+                listOf("Bands", "Stage").forEachIndexed { idx, title ->
+                    val isSelected = selectedTab == idx
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (isSelected) RogSurfaceHighlight else RogSurfaceMedium)
-                            .clickable {
-                                onSelectPreset(name)
-                                currentBands = presetBands.clone()
-                            }
-                            .padding(horizontal = 14.dp, vertical = 7.dp)
+                            .weight(1f)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(if (isSelected) RogSurfaceHighlight else Color.Transparent)
+                            .clickable { selectedTab = idx }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = name,
-                            fontSize = 12.sp,
+                            text = title,
+                            fontSize = 12.5.sp,
                             fontFamily = CircularFontFamily,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                             color = if (isSelected) RogTextGold else RogTextSecondary
@@ -196,262 +207,794 @@ fun EqualizerProfilesSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // 10-Band Interactive Faders Box
+            if (selectedTab == 0) {
+                GraphicEqTabContent(
+                    dspConfig = dspConfig,
+                    activeBands = activeBands,
+                    selectedPreset = selectedPreset,
+                    customPresets = customPresets,
+                    onSelectPreset = onSelectPreset,
+                    onOpenSaveDialog = {
+                        customNameInput = ""
+                        showSaveDialog = true
+                    },
+                    onDeleteCustomPreset = onDeleteCustomPreset,
+                    onConfigChange = onConfigChange
+                )
+            } else {
+                StageTabContent(
+                    dspConfig = dspConfig,
+                    onProfileSelect = onProfileSelect,
+                    onConfigChange = onConfigChange
+                )
+            }
+        }
+    }
+
+    if (showSaveDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveDialog = false },
+            containerColor = RogSurfaceDark,
+            title = {
+                Text(
+                    text = "Save Preset",
+                    fontFamily = CircularFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    color = RogTextPrimary,
+                    fontSize = 17.sp
+                )
+            },
+            text = {
+                OutlinedTextField(
+                    value = customNameInput,
+                    onValueChange = { if (it.length <= 24) customNameInput = it },
+                    singleLine = true,
+                    placeholder = {
+                        Text("Preset name", color = RogTextMuted, fontSize = 13.sp)
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = RogTextGold,
+                        unfocusedBorderColor = RogSurfaceHighlight,
+                        focusedTextColor = RogTextPrimary,
+                        unfocusedTextColor = RogTextPrimary,
+                        cursorColor = RogTextGold
+                    )
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (onSaveCustomPreset(customNameInput)) {
+                            showSaveDialog = false
+                        }
+                    },
+                    enabled = customNameInput.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = RogGoldPrimary,
+                        contentColor = RogObsidian
+                    )
+                ) {
+                    Text("Save", fontFamily = CircularFontFamily, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSaveDialog = false }) {
+                    Text("Cancel", fontFamily = CircularFontFamily, color = RogTextSecondary)
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun FrequencyResponseCard(
+    dspConfig: AudioDspConfig,
+    spectrumBands: FloatArray
+) {
+    val eqCurvePoints = remember(
+        dspConfig.eqEnabled,
+        dspConfig.eqBands,
+        dspConfig.bassBoostEnabled,
+        dspConfig.bassBoostGainDb,
+        dspConfig.bassBoostFreq,
+        dspConfig.trebleClarityDb,
+        dspConfig.trebleFreqHz,
+        dspConfig.vocalPresenceDb,
+        dspConfig.microDetailLevel,
+        dspConfig.safeMode
+    ) {
+        EqPresets.computeFrequencyResponseCurve(dspConfig, pointCount = 56, includeToneStage = false)
+    }
+
+    val totalCurvePoints = remember(
+        dspConfig.eqEnabled,
+        dspConfig.eqBands,
+        dspConfig.bassBoostEnabled,
+        dspConfig.bassBoostGainDb,
+        dspConfig.bassBoostFreq,
+        dspConfig.trebleClarityDb,
+        dspConfig.trebleFreqHz,
+        dspConfig.vocalPresenceDb,
+        dspConfig.microDetailLevel,
+        dspConfig.safeMode
+    ) {
+        EqPresets.computeFrequencyResponseCurve(dspConfig, pointCount = 56, includeToneStage = true)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(RogObsidian)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(86.dp)
+        ) {
+            val w = size.width
+            val h = size.height
+            if (w <= 0f || h <= 0f) return@Canvas
+            val midY = h * 0.5f
+            val maxDbRange = 13f
+
+            drawLine(
+                color = RogTextMuted.copy(alpha = 0.35f),
+                start = Offset(0f, midY),
+                end = Offset(w, midY),
+                strokeWidth = 1.dp.toPx(),
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
+            )
+
+            val isSignalActive = dspConfig.masterEnabled && !dspConfig.abBypass
+            val barCount = 10
+            val colWidth = w / barCount
+            val barW = colWidth * 0.54f
+            for (i in 0 until barCount) {
+                val energy = if (isSignalActive && i < spectrumBands.size) {
+                    spectrumBands[i].coerceIn(0.04f, 1.0f)
+                } else {
+                    0.04f
+                }
+                val barH = (h * energy * 0.85f).coerceAtLeast(2.dp.toPx())
+                val x = i * colWidth + (colWidth - barW) * 0.5f
+                drawRoundRect(
+                    color = if (isSignalActive) RogGoldPrimary.copy(alpha = 0.18f) else RogSurfaceHighlight.copy(alpha = 0.2f),
+                    topLeft = Offset(x, h - barH),
+                    size = Size(barW, barH),
+                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                )
+            }
+
+            fun buildCurvePath(points: FloatArray): Path {
+                val path = Path()
+                val count = points.size
+                fun yForDb(db: Float): Float {
+                    val clamped = db.coerceIn(-maxDbRange, maxDbRange)
+                    return midY - (clamped / maxDbRange) * (midY - 4.dp.toPx())
+                }
+                val stepX = w / (count - 1).coerceAtLeast(1)
+                path.moveTo(0f, yForDb(points[0]))
+                for (i in 1 until count) {
+                    val prevX = (i - 1) * stepX
+                    val prevY = yForDb(points[i - 1])
+                    val curX = i * stepX
+                    val curY = yForDb(points[i])
+                    val ctrlX = (prevX + curX) * 0.5f
+                    path.cubicTo(ctrlX, prevY, ctrlX, curY, curX, curY)
+                }
+                return path
+            }
+
+            val totalPath = buildCurvePath(totalCurvePoints)
+            drawPath(
+                path = totalPath,
+                color = AquaCutAccent.copy(alpha = if (dspConfig.abBypass) 0.15f else 0.45f),
+                style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
+            )
+
+            val eqPath = buildCurvePath(eqCurvePoints)
+            val fillPath = Path().apply {
+                addPath(eqPath)
+                lineTo(w, midY)
+                lineTo(0f, midY)
+                close()
+            }
+            val eqColor = when {
+                dspConfig.abBypass -> RogTextMuted
+                dspConfig.eqEnabled -> RogGoldPrimary
+                else -> RogTextSecondary.copy(alpha = 0.45f)
+            }
+            drawPath(
+                path = fillPath,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        eqColor.copy(alpha = 0.24f),
+                        eqColor.copy(alpha = 0.04f)
+                    )
+                )
+            )
+            drawPath(
+                path = eqPath,
+                color = eqColor,
+                style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round)
+            )
+        }
+    }
+}
+
+@Composable
+private fun GraphicEqTabContent(
+    dspConfig: AudioDspConfig,
+    activeBands: List<Float>,
+    selectedPreset: String,
+    customPresets: Map<String, AudioDspConfig>,
+    onSelectPreset: (String) -> Unit,
+    onOpenSaveDialog: () -> Unit,
+    onDeleteCustomPreset: (String) -> Unit,
+    onConfigChange: (AudioDspConfig) -> Unit
+) {
+    val bandLabels = EqPresets.FREQUENCY_LABELS
+
+    var currentBands by remember(activeBands, selectedPreset) {
+        mutableStateOf(activeBands.toFloatArray())
+    }
+
+    val latestConfig by rememberUpdatedState(dspConfig)
+    val latestBands by rememberUpdatedState(currentBands)
+
+    Column {
+        // Horizontal Presets + Save Pill
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(RogObsidian)
-                    .padding(16.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(RogGoldDim)
+                    .clickable { onOpenSaveDialog() }
+                    .padding(horizontal = 10.dp, vertical = 7.dp)
             ) {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "+12 dB",
-                            fontSize = 10.sp,
-                            fontFamily = CircularFontFamily,
-                            color = RogTextMuted
-                        )
-                        Text(
-                            text = "FREQUENCY BANDS (Hz) • LIVE GAIN",
-                            fontSize = 9.sp,
-                            fontFamily = CircularFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            color = RogTextGold,
-                            letterSpacing = 0.5.sp
-                        )
-                        Text(
-                            text = "-12 dB",
-                            fontSize = 10.sp,
-                            fontFamily = CircularFontFamily,
-                            color = RogTextMuted
-                        )
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Save Preset",
+                    tint = RogTextGold,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            EqPresets.SPEC_MAP["Flat"]?.let { flatSpec ->
+                PresetPillChip(
+                    name = flatSpec.name,
+                    isSelected = selectedPreset == flatSpec.name,
+                    isCustom = false,
+                    onClick = {
+                        onSelectPreset(flatSpec.name)
+                        currentBands = flatSpec.bands.clone()
                     }
+                )
+            }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+            customPresets.forEach { (name, cfg) ->
+                PresetPillChip(
+                    name = name,
+                    isSelected = selectedPreset == name,
+                    isCustom = true,
+                    onClick = {
+                        onSelectPreset(name)
+                        currentBands = cfg.eqBands.toFloatArray()
+                    },
+                    onDelete = { onDeleteCustomPreset(name) }
+                )
+            }
 
-                    // 10-Band Interactive Sliders Row Grid
-                    Row(
+            EqPresets.SPECS.filter { it.name != "Flat" }.forEach { spec ->
+                PresetPillChip(
+                    name = spec.name,
+                    isSelected = selectedPreset == spec.name,
+                    isCustom = false,
+                    onClick = {
+                        onSelectPreset(spec.name)
+                        currentBands = spec.bands.clone()
+                    }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // 10-Band Visual Faders
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(RogObsidian)
+                .padding(horizontal = 10.dp, vertical = 14.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(172.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                for (i in 0 until 10) {
+                    val gain = currentBands.getOrElse(i) { 0f }
+                    val formattedGain = formatDbCompact(gain)
+                    var lastTapTimeMs by remember(i) { mutableLongStateOf(0L) }
+
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(140.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .fillMaxHeight()
+                            .weight(1f)
                     ) {
-                        for (i in 0 until 10) {
-                            val gain = currentBands.getOrElse(i) { 0f }
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.SpaceBetween,
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .weight(1f)
-                            ) {
-                                // dB value indicator
-                                Text(
-                                    text = if (gain > 0) "+${gain.toInt()}" else "${gain.toInt()}",
-                                    fontSize = 9.sp,
-                                    fontFamily = CircularFontFamily,
-                                    fontWeight = FontWeight.Medium,
-                                    color = if (gain != 0f) RogTextGold else RogTextMuted
-                                )
+                        Text(
+                            text = formattedGain,
+                            fontSize = 8.5.sp,
+                            fontFamily = CircularFontFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            color = when {
+                                gain > 0.05f -> RogTextGold
+                                gain < -0.05f -> AquaCutAccent
+                                else -> RogTextMuted
+                            }
+                        )
 
-                                // Interactive Vertical Fader Column
-                                BoxWithConstraints(
-                                    modifier = Modifier
-                                        .width(24.dp)
-                                        .weight(1f)
-                                        .padding(vertical = 4.dp)
-                                        .pointerInput(i, dspConfig) {
-                                            awaitEachGesture {
-                                                val down = awaitFirstDown()
-                                                val h = size.height.toFloat()
-                                                if (h > 0f) {
-                                                    val fraction = (1f - (down.position.y / h)).coerceIn(0f, 1f)
-                                                    val db = (fraction * 24f - 12f).roundToInt().toFloat()
-                                                    val newBands = currentBands.clone()
-                                                    newBands[i] = db
-                                                    currentBands = newBands
-                                                    onSelectPreset("Custom")
-                                                    onConfigChange(
-                                                        dspConfig.copy(
-                                                            eqEnabled = true,
-                                                            eqPreset = "Custom",
-                                                            eqBands = newBands.toList()
-                                                        )
+                        BoxWithConstraints(
+                            modifier = Modifier
+                                .width(28.dp)
+                                .weight(1f)
+                                .padding(vertical = 5.dp)
+                                .pointerInput(i) {
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                        val now = System.currentTimeMillis()
+                                        val h = size.height.toFloat()
+                                        var moved = false
+                                        val startY = down.position.y
+
+                                        fun applyFraction(yPos: Float) {
+                                            if (h <= 0f) return
+                                            val fraction = (1f - (yPos / h)).coerceIn(0f, 1f)
+                                            val db = (round((fraction * 24f - 12f) * 2f) / 2f).coerceIn(-12f, 12f)
+                                            if (abs(latestBands.getOrElse(i) { 0f } - db) >= 0.05f) {
+                                                val newBands = latestBands.clone()
+                                                newBands[i] = db
+                                                currentBands = newBands
+                                                onConfigChange(
+                                                    latestConfig.copy(
+                                                        eqEnabled = true,
+                                                        eqPreset = "Custom",
+                                                        eqBands = newBands.toList()
                                                     )
-                                                }
-                                                while (true) {
-                                                    val event = awaitPointerEvent()
-                                                    val change = event.changes.firstOrNull() ?: break
-                                                    if (!change.pressed) break
-                                                    val fraction = (1f - (change.position.y / h)).coerceIn(0f, 1f)
-                                                    val db = (fraction * 24f - 12f).roundToInt().toFloat()
-                                                    if (currentBands.getOrElse(i) { 0f } != db) {
-                                                        val newBands = currentBands.clone()
-                                                        newBands[i] = db
-                                                        currentBands = newBands
-                                                        onSelectPreset("Custom")
-                                                        onConfigChange(
-                                                            dspConfig.copy(
-                                                                eqEnabled = true,
-                                                                eqPreset = "Custom",
-                                                                eqBands = newBands.toList()
-                                                            )
-                                                        )
-                                                    }
-                                                    change.consume()
-                                                }
+                                                )
                                             }
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    // Track line
-                                    Box(
-                                        modifier = Modifier
-                                            .width(3.dp)
-                                            .fillMaxHeight()
-                                            .clip(RoundedCornerShape(1.5.dp))
-                                            .background(RogSurfaceHighlight)
-                                    )
+                                        }
 
-                                    // Center (0 dB) tick indicator
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.Center)
-                                            .width(8.dp)
-                                            .height(1.dp)
-                                            .background(RogTextMuted.copy(alpha = 0.5f))
-                                    )
+                                        val isDoubleTap = (now - lastTapTimeMs) in 40..280
+                                        lastTapTimeMs = now
+                                        if (!isDoubleTap) applyFraction(down.position.y)
+                                        down.consume()
 
-                                    // Thumb fader positioned by gain (-12 to +12)
-                                    val fraction = ((gain + 12f) / 24f).coerceIn(0f, 1f)
+                                        while (true) {
+                                            val event = awaitPointerEvent()
+                                            val change = event.changes.firstOrNull() ?: break
+                                            if (!change.pressed) break
+                                            if (abs(change.position.y - startY) > 6f) moved = true
+                                            applyFraction(change.position.y)
+                                            change.consume()
+                                        }
 
-                                    // Active colored fill from center or thumb
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.BottomCenter)
-                                            .fillMaxHeight(fraction)
-                                            .width(3.dp)
-                                            .background(if (dspConfig.eqEnabled) RogTextGold else RogTextMuted)
-                                    )
+                                        if (isDoubleTap && !moved) {
+                                            val newBands = latestBands.clone()
+                                            newBands[i] = 0f
+                                            currentBands = newBands
+                                            onConfigChange(
+                                                latestConfig.copy(
+                                                    eqEnabled = true,
+                                                    eqPreset = "Custom",
+                                                    eqBands = newBands.toList()
+                                                )
+                                            )
+                                        }
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(3.dp)
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(1.5.dp))
+                                    .background(RogSurfaceHighlight)
+                            )
 
-                                    // Thumb knob
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.BottomCenter)
-                                            .padding(bottom = (fraction * (maxHeight.value - 12.dp.value)).dp.coerceAtLeast(0.dp))
-                                            .size(12.dp)
-                                            .clip(CircleShape)
-                                            .background(if (dspConfig.eqEnabled) RogTextGold else RogSurfaceHighlight)
-                                    )
-                                }
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .width(10.dp)
+                                    .height(1.dp)
+                                    .background(RogTextMuted.copy(alpha = 0.6f))
+                            )
 
-                                // Frequency label
-                                Text(
-                                    text = bandLabels[i],
-                                    fontSize = 9.sp,
-                                    fontFamily = CircularFontFamily,
-                                    color = RogTextSecondary,
-                                    textAlign = TextAlign.Center
+                            val fraction = ((gain + 12f) / 24f).coerceIn(0f, 1f)
+                            val trackH = maxHeight
+                            val fillColor = when {
+                                !dspConfig.eqEnabled || dspConfig.abBypass -> RogTextMuted
+                                gain >= 0f -> RogTextGold
+                                else -> AquaCutAccent
+                            }
+
+                            if (gain > 0.05f) {
+                                val boostFrac = (gain / 12f).coerceIn(0f, 1f) * 0.5f
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = trackH * 0.5f)
+                                        .fillMaxHeight(boostFrac)
+                                        .width(3.dp)
+                                        .background(fillColor)
+                                )
+                            } else if (gain < -0.05f) {
+                                val cutFrac = (-gain / 12f).coerceIn(0f, 1f) * 0.5f
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopCenter)
+                                        .padding(top = trackH * 0.5f)
+                                        .fillMaxHeight(cutFrac)
+                                        .width(3.dp)
+                                        .background(fillColor)
                                 )
                             }
+
+                            val thumbSize = 12.dp
+                            val bottomOffset = (fraction * (trackH.value - thumbSize.value)).dp.coerceAtLeast(0.dp)
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = bottomOffset)
+                                    .size(thumbSize)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (dspConfig.eqEnabled && !dspConfig.abBypass) {
+                                            if (gain < -0.05f) AquaCutAccent else RogTextGold
+                                        } else {
+                                            RogSurfaceHighlight
+                                        }
+                                    )
+                            )
                         }
+
+                        Text(
+                            text = bandLabels[i],
+                            fontSize = 9.sp,
+                            fontFamily = CircularFontFamily,
+                            color = RogTextSecondary,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
             }
+        }
 
-            Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-            // Sub-bass & Treble Dial Sliders
+        // Compact Pre-Amp & Auto-Headroom
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(RogSurfaceSubtle)
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            StageSliderRow(
+                label = "Pre-Amp",
+                valueText = "${if (dspConfig.eqPreampDb > 0.05f) "+" else ""}${String.format("%.1f", dspConfig.eqPreampDb)} dB",
+                value = dspConfig.eqPreampDb,
+                range = -12f..6f,
+                onValueChange = { raw ->
+                    val snapped = round(raw * 2f) / 2f
+                    onConfigChange(dspConfig.copy(eqPreampDb = snapped.coerceIn(-12f, 6f)))
+                }
+            )
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Bass Boost
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(RogSurfaceSubtle)
-                        .padding(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Bass Boost",
-                            fontSize = 11.sp,
-                            fontFamily = CircularFontFamily,
-                            fontWeight = FontWeight.SemiBold,
-                            color = RogTextPrimary
-                        )
-                        Text(
-                            text = "+${String.format("%.1f", dspConfig.bassBoostGainDb)} dB",
-                            fontSize = 11.sp,
-                            fontFamily = CircularFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            color = RogTextGold
-                        )
-                    }
-                    Slider(
-                        value = dspConfig.bassBoostGainDb,
-                        onValueChange = { onConfigChange(dspConfig.copy(bassBoostGainDb = it, bassBoostEnabled = it > 0.1f)) },
-                        valueRange = 0f..10f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = RogTextGold,
-                            activeTrackColor = RogTextGold,
-                            inactiveTrackColor = RogSurfaceHighlight
-                        )
+                Text(
+                    text = "Headroom Guard",
+                    fontSize = 12.sp,
+                    fontFamily = CircularFontFamily,
+                    color = RogTextSecondary
+                )
+                Switch(
+                    checked = dspConfig.autoHeadroomEnabled,
+                    onCheckedChange = { onConfigChange(dspConfig.copy(autoHeadroomEnabled = it)) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = RogObsidian,
+                        checkedTrackColor = RogTextGold,
+                        uncheckedThumbColor = RogTextMuted,
+                        uncheckedTrackColor = RogSurfaceHighlight
                     )
-                }
+                )
+            }
+        }
+    }
+}
 
-                // Treble Clarity
-                Column(
+@Composable
+private fun StageTabContent(
+    dspConfig: AudioDspConfig,
+    onProfileSelect: (AudioProfile) -> Unit,
+    onConfigChange: (AudioDspConfig) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Compact Visual Profile Strip
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            AudioProfile.values().forEach { profile ->
+                val isSelected = dspConfig.activeProfile == profile
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(RogSurfaceSubtle)
-                        .padding(12.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (isSelected) RogSurfaceHighlight else RogSurfaceSubtle)
+                        .clickable { onProfileSelect(profile) }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Treble Air",
-                            fontSize = 11.sp,
-                            fontFamily = CircularFontFamily,
-                            fontWeight = FontWeight.SemiBold,
-                            color = RogTextPrimary
-                        )
-                        Text(
-                            text = "+${String.format("%.1f", dspConfig.trebleClarityDb)} dB",
-                            fontSize = 11.sp,
-                            fontFamily = CircularFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            color = RogTextGold
-                        )
-                    }
-                    Slider(
-                        value = dspConfig.trebleClarityDb,
-                        onValueChange = { onConfigChange(dspConfig.copy(trebleClarityDb = it)) },
-                        valueRange = 0f..8f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = RogTextGold,
-                            activeTrackColor = RogTextGold,
-                            inactiveTrackColor = RogSurfaceHighlight
-                        )
+                    Icon(
+                        imageVector = profileIcon(profile),
+                        contentDescription = null,
+                        tint = if (isSelected) RogTextGold else RogTextSecondary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = profile.label,
+                        fontSize = 12.sp,
+                        fontFamily = CircularFontFamily,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSelected) RogTextGold else RogTextPrimary
                     )
                 }
             }
         }
+
+        // Clean Sliders (zero explanatory paragraphs)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(RogSurfaceSubtle)
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            StageSliderRow(
+                label = "Bass",
+                valueText = "+${String.format("%.1f", dspConfig.bassBoostGainDb)} dB",
+                value = dspConfig.bassBoostGainDb,
+                range = 0f..10f,
+                onValueChange = {
+                    onConfigChange(dspConfig.copy(bassBoostGainDb = it, bassBoostEnabled = it > 0.1f))
+                }
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                BassBoostFrequency.values().forEach { freq ->
+                    val isSelected = dspConfig.bassBoostFreq == freq
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isSelected) RogSurfaceHighlight else RogSurfaceMedium)
+                            .clickable { onConfigChange(dspConfig.copy(bassBoostFreq = freq)) }
+                            .padding(horizontal = 9.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = freq.shortLabel,
+                            fontSize = 10.sp,
+                            fontFamily = CircularFontFamily,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) RogTextGold else RogTextSecondary
+                        )
+                    }
+                }
+            }
+
+            StageSliderRow(
+                label = "Vocals",
+                valueText = "${if (dspConfig.vocalPresenceDb > 0.05f) "+" else ""}${String.format("%.1f", dspConfig.vocalPresenceDb)} dB",
+                value = dspConfig.vocalPresenceDb,
+                range = -4f..6f,
+                onValueChange = { onConfigChange(dspConfig.copy(vocalPresenceDb = it)) }
+            )
+
+            StageSliderRow(
+                label = "Treble",
+                valueText = "+${String.format("%.1f", dspConfig.trebleClarityDb)} dB",
+                value = dspConfig.trebleClarityDb,
+                range = 0f..8f,
+                onValueChange = { onConfigChange(dspConfig.copy(trebleClarityDb = it)) }
+            )
+
+            StageSliderRow(
+                label = "Detail",
+                valueText = "${(dspConfig.microDetailLevel * 100).toInt()}%",
+                value = dspConfig.microDetailLevel,
+                range = 0f..1f,
+                onValueChange = { onConfigChange(dspConfig.copy(microDetailLevel = it)) }
+            )
+
+            StageSliderRow(
+                label = "Width",
+                valueText = "${String.format("%.2f", dspConfig.stereoWidth)}x",
+                value = dspConfig.stereoWidth,
+                range = 0.7f..1.6f,
+                onValueChange = { onConfigChange(dspConfig.copy(stereoWidth = it)) }
+            )
+
+            StageSliderRow(
+                label = "Crossfeed",
+                valueText = "${(dspConfig.crossfeedAmount * 100).toInt()}%",
+                value = dspConfig.crossfeedAmount,
+                range = 0f..1f,
+                onValueChange = {
+                    onConfigChange(dspConfig.copy(crossfeedAmount = it, crossfeed = it > 0.02f))
+                }
+            )
+
+            StageSliderRow(
+                label = "Reverb",
+                valueText = "${(dspConfig.reverbLevel * 100).toInt()}%",
+                value = dspConfig.reverbLevel,
+                range = 0f..0.7f,
+                onValueChange = { onConfigChange(dspConfig.copy(reverbLevel = it)) }
+            )
+
+            StageSliderRow(
+                label = "Room",
+                valueText = "${(dspConfig.roomSize * 100).toInt()}%",
+                value = dspConfig.roomSize,
+                range = 0.1f..1f,
+                onValueChange = { onConfigChange(dspConfig.copy(roomSize = it)) }
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Limiter",
+                    fontSize = 12.sp,
+                    fontFamily = CircularFontFamily,
+                    color = RogTextSecondary
+                )
+                Switch(
+                    checked = dspConfig.safeMode && dspConfig.limiterEnabled,
+                    onCheckedChange = { enabled ->
+                        onConfigChange(dspConfig.copy(safeMode = enabled, limiterEnabled = enabled))
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = RogObsidian,
+                        checkedTrackColor = RogTextGold,
+                        uncheckedThumbColor = RogTextMuted,
+                        uncheckedTrackColor = RogSurfaceHighlight
+                    )
+                )
+            }
+        }
     }
+}
+
+@Composable
+private fun PresetPillChip(
+    name: String,
+    isSelected: Boolean,
+    isCustom: Boolean,
+    onClick: () -> Unit,
+    onDelete: (() -> Unit)? = null
+) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                when {
+                    isSelected -> RogSurfaceHighlight
+                    isCustom -> RogGoldDim
+                    else -> RogSurfaceMedium
+                }
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 13.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = name,
+            fontSize = 12.sp,
+            fontFamily = CircularFontFamily,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+            color = if (isSelected) RogTextGold else if (isCustom) RogGoldChampagne else RogTextSecondary
+        )
+        if (isCustom && isSelected && onDelete != null) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Delete $name",
+                tint = RogTextSecondary,
+                modifier = Modifier
+                    .size(14.dp)
+                    .clickable { onDelete() }
+            )
+        }
+    }
+}
+
+@Composable
+private fun StageSliderRow(
+    label: String,
+    valueText: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    onValueChange: (Float) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            fontSize = 11.5.sp,
+            fontFamily = CircularFontFamily,
+            color = RogTextSecondary,
+            modifier = Modifier.width(74.dp)
+        )
+        Slider(
+            value = value.coerceIn(range.start, range.endInclusive),
+            onValueChange = onValueChange,
+            valueRange = range,
+            modifier = Modifier.weight(1f),
+            colors = SliderDefaults.colors(
+                thumbColor = RogTextGold,
+                activeTrackColor = RogTextGold,
+                inactiveTrackColor = RogSurfaceHighlight
+            )
+        )
+        Text(
+            text = valueText,
+            fontSize = 11.sp,
+            fontFamily = CircularFontFamily,
+            fontWeight = FontWeight.Bold,
+            color = RogTextGold,
+            textAlign = TextAlign.End,
+            modifier = Modifier.width(52.dp)
+        )
+    }
+}
+
+private fun formatDbCompact(gain: Float): String {
+    val snapped = (round(gain * 2f) / 2f)
+    if (abs(snapped) < 0.05f) return "0"
+    val isWhole = abs(snapped - snapped.toInt().toFloat()) < 0.05f
+    val prefix = if (snapped > 0f) "+" else ""
+    return if (isWhole) "$prefix${snapped.toInt()}" else "$prefix${String.format("%.1f", snapped)}"
 }

@@ -135,8 +135,14 @@ class PlayerEngine(
             _queueIndex.value = queueIndex
             val cachedLyrics = database.getCachedLyrics(song.videoId)
             if (cachedLyrics != null) {
-                _currentLyrics.value = lyricsProvider.ensureLiveLyrics(cachedLyrics.copy(videoId = song.videoId), song.durationSeconds)
-                _isFindingLyrics.value = false
+                val cleaned = lyricsProvider.cleanLyricLines(cachedLyrics.lines)
+                val isAuthenticSync = cachedLyrics.synced && cleaned.any { it.timeMs != null }
+                _currentLyrics.value = cachedLyrics.copy(
+                    videoId = song.videoId,
+                    synced = isAuthenticSync,
+                    lines = cleaned
+                )
+                _isFindingLyrics.value = !isAuthenticSync
             } else {
                 _isFindingLyrics.value = true
             }
@@ -493,7 +499,20 @@ class PlayerEngine(
                     Player.STATE_READY -> {
                         _isBuffering.value = false
                         stopBufferingWatchdog()
-                        _durationMs.value = exoPlayer.duration.coerceAtLeast(0L)
+                        val readyDur = exoPlayer.duration.coerceAtLeast(0L)
+                        _durationMs.value = readyDur
+                        val cur = _currentTrack.value
+                        if (cur != null && cur.durationSeconds <= 0 && readyDur > 0L) {
+                            val durSec = (readyDur / 1000L).toInt()
+                            val mins = durSec / 60
+                            val secs = durSec % 60
+                            val updated = cur.copy(
+                                durationSeconds = durSec,
+                                duration = cur.duration?.ifBlank { null } ?: String.format("%d:%02d", mins, secs)
+                            )
+                            _currentTrack.value = updated
+                            _queue.value = _queue.value.map { if (it.videoId == updated.videoId) updated else it }
+                        }
                         if (exoPlayer.isPlaying || exoPlayer.playWhenReady) {
                             acquireLocks()
                         }
@@ -630,19 +649,29 @@ class PlayerEngine(
             // Immediately pre-fetch lyrics for upcoming queue items
             for (nextSong in upcomingSongs) {
                 if (!isActive) break
-                if (database.getCachedLyrics(nextSong.videoId) == null) {
+                val existingCache = database.getCachedLyrics(nextSong.videoId)
+                if (existingCache == null || !existingCache.synced) {
                     try {
+                        val hydratedNext = hydrateSongMetadataIfNeeded(nextSong)
                         val preLyrics = lyricsProvider.getLyrics(
-                            title = nextSong.title,
-                            artist = nextSong.artists,
-                            album = nextSong.album,
-                            durationSeconds = nextSong.durationSeconds,
-                            videoId = nextSong.videoId
+                            title = hydratedNext.title,
+                            artist = hydratedNext.artists,
+                            album = hydratedNext.album,
+                            durationSeconds = hydratedNext.durationSeconds,
+                            videoId = hydratedNext.videoId
                         )
-                        if (preLyrics != null) {
-                            val toCache = lyricsProvider.ensureLiveLyrics(preLyrics.copy(videoId = nextSong.videoId), nextSong.durationSeconds)
-                            database.cacheLyrics(nextSong.videoId, toCache)
-                            Log.d(TAG, "Prefetched lyrics for upcoming song: ${nextSong.title}")
+                        if (preLyrics != null && (existingCache == null || preLyrics.synced)) {
+                            val cleaned = lyricsProvider.cleanLyricLines(preLyrics.lines)
+                            if (cleaned.isNotEmpty()) {
+                                val isAuthenticSync = preLyrics.synced && cleaned.any { it.timeMs != null }
+                                val toCache = preLyrics.copy(
+                                    videoId = hydratedNext.videoId,
+                                    synced = isAuthenticSync,
+                                    lines = cleaned
+                                )
+                                database.cacheLyrics(hydratedNext.videoId, toCache)
+                                Log.d(TAG, "Prefetched lyrics for upcoming song: ${hydratedNext.title} (synced=$isAuthenticSync)")
+                            }
                         }
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to prefetch lyrics for ${nextSong.title}", e)
@@ -721,8 +750,14 @@ class PlayerEngine(
         // Immediately check local cache synchronously on track start for instant 0ms lyric update
         val cached = database.getCachedLyrics(song.videoId)
         if (cached != null) {
-            _currentLyrics.value = lyricsProvider.ensureLiveLyrics(cached.copy(videoId = song.videoId), song.durationSeconds)
-            _isFindingLyrics.value = false
+            val cleaned = lyricsProvider.cleanLyricLines(cached.lines)
+            val isAuthenticSync = cached.synced && cleaned.any { it.timeMs != null }
+            _currentLyrics.value = cached.copy(
+                videoId = song.videoId,
+                synced = isAuthenticSync,
+                lines = cleaned
+            )
+            _isFindingLyrics.value = !isAuthenticSync
         } else {
             _currentLyrics.value = null
             _isFindingLyrics.value = true
@@ -890,47 +925,145 @@ class PlayerEngine(
         }
     }
 
+    private suspend fun hydrateSongMetadataIfNeeded(song: SongItem): SongItem {
+        val needsArtist = InnerTubeClient.isMissingArtist(song.artists)
+        val needsDuration = song.durationSeconds <= 0
+        if (!needsArtist && !needsDuration) return song
+
+        val details = try {
+            innerTube.getSongDetails(song.videoId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        } ?: return song
+
+        val resolvedArtist = if (needsArtist && !InnerTubeClient.isMissingArtist(details.artists)) {
+            details.artists
+        } else {
+            song.artists
+        }
+        val resolvedDurationSec = if (needsDuration && details.durationSeconds > 0) {
+            details.durationSeconds
+        } else {
+            song.durationSeconds
+        }
+        val resolvedDuration = song.duration?.ifBlank { null } ?: details.duration
+        val resolvedAlbum = song.album?.ifBlank { null } ?: details.album
+        val resolvedThumb = song.thumbnailUrl?.ifBlank { null } ?: details.thumbnailUrl
+
+        val hydrated = song.copy(
+            title = song.title.ifBlank { details.title },
+            artists = resolvedArtist,
+            album = resolvedAlbum,
+            duration = resolvedDuration,
+            durationSeconds = resolvedDurationSec,
+            thumbnailUrl = resolvedThumb
+        )
+
+        if (hydrated != song) {
+            database.updateSongMetadata(hydrated)
+            withContext(Dispatchers.Main) {
+                val cur = _currentTrack.value
+                if (cur?.videoId == hydrated.videoId) {
+                    _currentTrack.value = hydrated
+                    val updatedQueue = _queue.value.map { if (it.videoId == hydrated.videoId) hydrated else it }
+                    _queue.value = updatedQueue
+                    savePlaybackState(hydrated, _currentPositionMs.value, updatedQueue, _queueIndex.value)
+                    val highResThumb = InnerTubeClient.getHighResThumbnailUrl(hydrated.thumbnailUrl)
+                    val metadata = MediaMetadata.Builder()
+                        .setTitle(hydrated.title)
+                        .setArtist(hydrated.artists)
+                        .setAlbumTitle(hydrated.album ?: "")
+                        .setArtworkUri(highResThumb?.let { Uri.parse(it) } ?: hydrated.thumbnailUrl?.let { Uri.parse(it) })
+                        .build()
+                    try {
+                        exoPlayer.setPlaylistMetadata(metadata)
+                    } catch (_: Exception) {}
+                } else {
+                    _queue.value = _queue.value.map { if (it.videoId == hydrated.videoId) hydrated else it }
+                }
+            }
+        }
+        return hydrated
+    }
+
     private suspend fun fetchLyrics(song: SongItem) {
         try {
             if (!currentCoroutineContext().isActive || _currentTrack.value?.videoId != song.videoId) return
 
-            // 1. Check local cache
-            val cached = database.getCachedLyrics(song.videoId)
-            if (cached != null) {
-                if (currentCoroutineContext().isActive && _currentTrack.value?.videoId == song.videoId) {
-                    _currentLyrics.value = lyricsProvider.ensureLiveLyrics(cached.copy(videoId = song.videoId), song.durationSeconds)
-                    _isFindingLyrics.value = false
+            // Repair missing artist or duration before hitting lyrics providers
+            val targetSong = hydrateSongMetadataIfNeeded(song)
+            if (!currentCoroutineContext().isActive || _currentTrack.value?.videoId != targetSong.videoId) return
+
+            // 1. Check local cache (short-circuit only when authentic timestamped LRC is already cached)
+            val cached = database.getCachedLyrics(targetSong.videoId)
+            val cleanedCached = cached?.let { c ->
+                val cleaned = lyricsProvider.cleanLyricLines(c.lines)
+                val isAuthenticSync = c.synced && cleaned.any { it.timeMs != null }
+                c.copy(videoId = targetSong.videoId, synced = isAuthenticSync, lines = cleaned)
+            }
+            if (cleanedCached != null && cleanedCached.lines.isNotEmpty()) {
+                if (currentCoroutineContext().isActive && _currentTrack.value?.videoId == targetSong.videoId) {
+                    _currentLyrics.value = cleanedCached
+                    if (cleanedCached.synced) {
+                        _isFindingLyrics.value = false
+                        return
+                    }
                 }
-                return
             }
 
             _isFindingLyrics.value = true
 
             // 2. Fetch from high-speed multi-source provider with progressive updates
             val lyrics = lyricsProvider.getLyrics(
-                title = song.title,
-                artist = song.artists,
-                album = song.album,
-                durationSeconds = song.durationSeconds,
-                videoId = song.videoId,
+                title = targetSong.title,
+                artist = targetSong.artists,
+                album = targetSong.album,
+                durationSeconds = targetSong.durationSeconds,
+                videoId = targetSong.videoId,
                 onProgressiveLyrics = { progressiveLyrics ->
-                    if (scope.isActive && _currentTrack.value?.videoId == song.videoId) {
-                        val live = lyricsProvider.ensureLiveLyrics(progressiveLyrics.copy(videoId = song.videoId), song.durationSeconds)
-                        _currentLyrics.value = live
-                        _isFindingLyrics.value = false
-                        // Only lock into persistent cache if this is authentic timestamped LRC
-                        if (progressiveLyrics.synced && progressiveLyrics.lines.any { it.timeMs != null }) {
-                            database.cacheLyrics(song.videoId, live)
+                    if (scope.isActive && _currentTrack.value?.videoId == targetSong.videoId) {
+                        val cleaned = lyricsProvider.cleanLyricLines(progressiveLyrics.lines)
+                        if (cleaned.isNotEmpty()) {
+                            val isAuthenticSync = progressiveLyrics.synced && cleaned.any { it.timeMs != null }
+                            val normalized = progressiveLyrics.copy(
+                                videoId = targetSong.videoId,
+                                synced = isAuthenticSync,
+                                lines = cleaned
+                            )
+                            if (isAuthenticSync || _currentLyrics.value == null) {
+                                _currentLyrics.value = normalized
+                                _isFindingLyrics.value = !isAuthenticSync
+                            }
+                            // Only lock into persistent cache if this is authentic timestamped LRC
+                            if (isAuthenticSync) {
+                                database.cacheLyrics(targetSong.videoId, normalized)
+                            }
                         }
                     }
                 }
             )
 
-            if (currentCoroutineContext().isActive && _currentTrack.value?.videoId == song.videoId) {
+            if (currentCoroutineContext().isActive && _currentTrack.value?.videoId == targetSong.videoId) {
                 if (lyrics != null) {
-                    val resolvedLyrics = lyricsProvider.ensureLiveLyrics(lyrics.copy(videoId = song.videoId), song.durationSeconds)
-                    _currentLyrics.value = resolvedLyrics
-                    database.cacheLyrics(song.videoId, resolvedLyrics)
+                    val cleaned = lyricsProvider.cleanLyricLines(lyrics.lines)
+                    if (cleaned.isNotEmpty()) {
+                        val isAuthenticSync = lyrics.synced && cleaned.any { it.timeMs != null }
+                        val resolvedLyrics = lyrics.copy(
+                            videoId = targetSong.videoId,
+                            synced = isAuthenticSync,
+                            lines = cleaned
+                        )
+                        // Don't downgrade authentic synced lyrics to plain lyrics
+                        val currentMem = _currentLyrics.value
+                        if (isAuthenticSync || currentMem == null || currentMem.videoId != targetSong.videoId || !currentMem.synced) {
+                            _currentLyrics.value = resolvedLyrics
+                            if (isAuthenticSync || cleanedCached == null) {
+                                database.cacheLyrics(targetSong.videoId, resolvedLyrics)
+                            }
+                        }
+                    }
                 }
                 _isFindingLyrics.value = false
             }

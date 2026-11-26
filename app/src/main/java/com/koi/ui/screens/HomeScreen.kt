@@ -1,5 +1,6 @@
 package com.koi.ui.screens
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,6 +15,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,6 +57,7 @@ fun HomeScreen(
     onSelectSpatialMode: (SpatialMode) -> Unit,
     onConfigChange: (AudioDspConfig) -> Unit,
     onOpenProfileSelector: () -> Unit,
+    onOpenEqualizer: () -> Unit = {},
     onOpenSleepTimer: () -> Unit,
     onSelectStation: (SoundStation) -> Unit,
     onPlaylistClick: (Playlist) -> Unit,
@@ -101,31 +105,36 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Logo & Brand
-                    Column(
+                    // Brand + Live Spatial Pill
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.clickable { onProfileClick() }
                     ) {
                         Text(
-                            text = "KOI",
-                            fontSize = 19.sp,
+                            text = "Koi",
+                            fontSize = 22.sp,
                             fontFamily = CircularFontFamily,
                             fontWeight = FontWeight.Bold,
                             color = RogTextGold,
-                            letterSpacing = 2.sp
-                        )
-                        val statusSubtitle = when (dspConfig.spatialMode) {
-                            SpatialMode.MODE_8D -> "8D SPATIAL ACTIVE"
-                            SpatialMode.MODE_16D -> "16D DUAL RING ACTIVE"
-                            SpatialMode.OFF -> "STUDIO AUDIO ENGINE"
-                        }
-                        Text(
-                            text = statusSubtitle,
-                            fontSize = 9.sp,
-                            fontFamily = CircularFontFamily,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (dspConfig.spatialMode != SpatialMode.OFF) RogTextGold else RogTextSecondary,
                             letterSpacing = 1.sp
                         )
+                        if (dspConfig.spatialMode != SpatialMode.OFF) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(RogGoldDim)
+                                    .padding(horizontal = 7.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = if (dspConfig.spatialMode == SpatialMode.MODE_16D) "16D" else "8D",
+                                    fontSize = 10.sp,
+                                    fontFamily = CircularFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    color = RogTextGold
+                                )
+                            }
+                        }
                     }
 
                     // Action Controls
@@ -254,13 +263,25 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .padding(18.dp)
                 ) {
-                    // Top Row: Track Meta & Fullscreen Tap (No pond image in icon; controls float above background)
+                    // Top Row: Album Cover + Track Meta + Like
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onOpenFullScreen() },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        AsyncImage(
+                            model = uiState.currentTrack.thumbnailUrl,
+                            contentDescription = uiState.currentTrack.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(50.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(RogSurfaceMedium)
+                        )
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = uiState.currentTrack.title,
@@ -294,6 +315,30 @@ fun HomeScreen(
                                 contentDescription = "Like",
                                 tint = if (uiState.currentTrack.isLiked) RogTextGold else RogTextSecondary,
                                 modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Subtle Immersive Live Spectrum Strip on Hero Card
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(18.dp)
+                    ) {
+                        val barCount = 10
+                        val gap = 5.dp.toPx()
+                        val barW = (size.width - gap * (barCount - 1)) / barCount
+                        val active = uiState.isPlaying && dspConfig.masterEnabled && !dspConfig.abBypass
+                        for (i in 0 until barCount) {
+                            val amp = if (active && i < spectrumBands.size) spectrumBands[i].coerceIn(0.12f, 1f) else 0.14f
+                            val barH = size.height * amp
+                            drawRoundRect(
+                                color = if (active) RogTextGold.copy(alpha = 0.55f) else RogTextMuted.copy(alpha = 0.25f),
+                                topLeft = androidx.compose.ui.geometry.Offset(i * (barW + gap), size.height - barH),
+                                size = androidx.compose.ui.geometry.Size(barW, barH),
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx(), 2.dp.toPx())
                             )
                         }
                     }
@@ -366,25 +411,66 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Current Profile indicator
+                        // Visual Profile & EQ Quick Chips
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable { onOpenProfileSelector() }
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.weight(1f, fill = false)
                         ) {
-                            Text(
-                                text = "PROFILE: ",
-                                fontSize = 10.sp,
-                                fontFamily = CircularFontFamily,
-                                fontWeight = FontWeight.Normal,
-                                color = RogTextSecondary
-                            )
-                            Text(
-                                text = dspConfig.activeProfile.name,
-                                fontSize = 10.sp,
-                                fontFamily = CircularFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                color = RogTextGold
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(RogSurfaceMedium.copy(alpha = 0.6f))
+                                    .clickable { onOpenProfileSelector() }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = "Profile",
+                                    tint = RogTextGold,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = dspConfig.activeProfile.label,
+                                    fontSize = 10.5.sp,
+                                    fontFamily = CircularFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    color = RogTextPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(
+                                        if (dspConfig.eqEnabled && !dspConfig.abBypass) RogGoldDim
+                                        else RogSurfaceMedium.copy(alpha = 0.6f)
+                                    )
+                                    .clickable { onOpenEqualizer() }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.GraphicEq,
+                                    contentDescription = "Equalizer",
+                                    tint = if (dspConfig.eqEnabled && !dspConfig.abBypass) RogTextGold else RogTextSecondary,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (dspConfig.eqEnabled && !dspConfig.abBypass) dspConfig.eqPreset else "EQ",
+                                    fontSize = 10.5.sp,
+                                    fontFamily = CircularFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (dspConfig.eqEnabled && !dspConfig.abBypass) RogTextGold else RogTextSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
 
                         // Playback Buttons
@@ -439,38 +525,28 @@ fun HomeScreen(
             }
         }
 
-        // --- 3. CURATED SOUND STATIONS ---
+        // --- 3. STATIONS ---
         item {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .onGloballyPositioned { coords -> onTargetPositioned(TutorialTarget.SOUND_STATIONS, coords.boundsInRoot()) }
-                    .padding(vertical = 12.dp)
+                    .padding(vertical = 10.dp)
             ) {
-                Column(modifier = Modifier.padding(horizontal = 20.dp)) {
-                    Text(
-                        text = "CURATED SOUND STATIONS",
-                        fontSize = 11.sp,
-                        fontFamily = CircularFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        color = RogTextGold,
-                        letterSpacing = 1.sp
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "Atmospheric acoustic spaces tuned for immersion",
-                        fontSize = 12.sp,
-                        fontFamily = CircularFontFamily,
-                        fontWeight = FontWeight.Normal,
-                        color = RogTextSecondary
-                    )
-                }
+                Text(
+                    text = "Stations",
+                    fontSize = 15.sp,
+                    fontFamily = CircularFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    color = RogTextPrimary,
+                    modifier = Modifier.padding(horizontal = 20.dp)
+                )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(uiState.soundStations.size) { idx ->
                         val station = uiState.soundStations[idx]
@@ -483,27 +559,25 @@ fun HomeScreen(
             }
         }
 
-        // --- 4. YOUR VAULT (LIBRARY QUICK LAUNCH) ---
+        // --- 4. PLAYLISTS ---
         if (uiState.libraryPlaylists.isNotEmpty()) {
             item {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .onGloballyPositioned { coords -> onTargetPositioned(TutorialTarget.VAULT, coords.boundsInRoot()) }
-                        .padding(vertical = 10.dp)
+                        .padding(vertical = 8.dp)
                 ) {
-                    Column(modifier = Modifier.padding(horizontal = 20.dp)) {
-                        Text(
-                            text = "YOUR VAULT",
-                            fontSize = 11.sp,
-                            fontFamily = CircularFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            color = RogTextGold,
-                            letterSpacing = 1.sp
-                        )
-                    }
+                    Text(
+                        text = "Playlists",
+                        fontSize = 15.sp,
+                        fontFamily = CircularFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        color = RogTextPrimary,
+                        modifier = Modifier.padding(horizontal = 20.dp)
+                    )
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     Row(
                         modifier = Modifier
@@ -518,41 +592,25 @@ fun HomeScreen(
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(RogSurfaceDark)
                                     .clickable { onPlaylistClick(playlist) }
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    .padding(horizontal = 12.dp, vertical = 9.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                if (playlist.isLikedSongs) {
-                                    Icon(
-                                        painter = painterResource(id = R.drawable.ic_heart_filled),
-                                        contentDescription = "Liked",
-                                        tint = RogTextGold,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                } else {
-                                    Icon(
-                                        painter = painterResource(id = R.drawable.ic_library),
-                                        contentDescription = "Playlist",
-                                        tint = RogTextGold,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (playlist.isLikedSongs) R.drawable.ic_heart_filled else R.drawable.ic_library
+                                    ),
+                                    contentDescription = playlist.title,
+                                    tint = RogTextGold,
+                                    modifier = Modifier.size(16.dp)
+                                )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Column {
-                                    Text(
-                                        text = playlist.title,
-                                        fontSize = 13.sp,
-                                        fontFamily = CircularFontFamily,
-                                        fontWeight = FontWeight.Bold,
-                                        color = RogTextPrimary
-                                    )
-                                    Text(
-                                        text = "${playlist.trackCount} tracks",
-                                        fontSize = 11.sp,
-                                        fontFamily = CircularFontFamily,
-                                        fontWeight = FontWeight.Normal,
-                                        color = RogTextSecondary
-                                    )
-                                }
+                                Text(
+                                    text = playlist.title,
+                                    fontSize = 13.sp,
+                                    fontFamily = CircularFontFamily,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = RogTextPrimary
+                                )
                             }
                         }
                     }
@@ -560,49 +618,30 @@ fun HomeScreen(
             }
         }
 
-        // --- 5. LIVE DISCOVERY STREAM (VERTICAL FEED) ---
+        // --- 5. DISCOVER ---
         item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 12.dp)
-            ) {
-                Text(
-                    text = "DISCOVERY STREAM",
-                    fontSize = 11.sp,
-                    fontFamily = CircularFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    color = RogTextGold,
-                    letterSpacing = 1.sp
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "Trending and curated tracks ready for instant playback",
-                    fontSize = 12.sp,
-                    fontFamily = CircularFontFamily,
-                    fontWeight = FontWeight.Normal,
-                    color = RogTextSecondary
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-            }
+            Text(
+                text = "Discover",
+                fontSize = 15.sp,
+                fontFamily = CircularFontFamily,
+                fontWeight = FontWeight.Bold,
+                color = RogTextPrimary,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
+            )
         }
 
-        // Items of the Discovery Feed
         val feedTracks = if (uiState.discoveryFeed.isNotEmpty()) {
             uiState.discoveryFeed
         } else {
             uiState.madeForYou.flatMap { it.tracks }.distinctBy { it.id }
         }
 
-        itemsIndexed(feedTracks.take(20)) { index, track ->
+        itemsIndexed(feedTracks.take(20)) { _, track ->
             DiscoveryFeedItem(
-                index = index + 1,
                 track = track,
                 isCurrentTrack = track.id == uiState.currentTrack.id,
-                isPlaying = track.id == uiState.currentTrack.id && uiState.isPlaying,
                 onClick = { onTrackClick(track, feedTracks) },
                 onLikeClick = { onToggleLike(track) },
-                onPlayClick = { onTrackClick(track, feedTracks) },
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 3.dp)
             )
         }
@@ -615,93 +654,59 @@ private fun SoundStationCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(
+    Row(
         modifier = modifier
-            .width(230.dp)
-            .height(112.dp)
-            .clip(RoundedCornerShape(24.dp))
+            .width(158.dp)
+            .clip(RoundedCornerShape(16.dp))
             .background(RogSurfaceDark)
             .clickable { onClick() }
-            .padding(14.dp)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween
+        Column(modifier = Modifier.weight(1f).padding(end = 6.dp)) {
+            Text(
+                text = station.tag,
+                fontSize = 9.sp,
+                fontFamily = CircularFontFamily,
+                fontWeight = FontWeight.Bold,
+                color = RogTextGold
+            )
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = station.title,
+                fontSize = 13.sp,
+                fontFamily = CircularFontFamily,
+                fontWeight = FontWeight.Bold,
+                color = RogTextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(RogSurfaceHighlight),
+            contentAlignment = Alignment.Center
         ) {
-            Column {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(RogSurfaceHighlight)
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = station.tag,
-                        fontSize = 9.sp,
-                        fontFamily = CircularFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        color = RogTextGold,
-                        letterSpacing = 0.5.sp
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Text(
-                    text = station.title,
-                    fontSize = 15.sp,
-                    fontFamily = CircularFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    color = RogTextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = station.subtitle,
-                    fontSize = 11.sp,
-                    fontFamily = CircularFontFamily,
-                    fontWeight = FontWeight.Normal,
-                    color = RogTextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(RogSurfaceHighlight),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_play),
-                        contentDescription = "Play Station",
-                        tint = RogTextGold,
-                        modifier = Modifier.size(12.dp)
-                    )
-                }
-            }
+            Icon(
+                painter = painterResource(id = R.drawable.ic_play),
+                contentDescription = "Play",
+                tint = RogTextGold,
+                modifier = Modifier.size(11.dp)
+            )
         }
     }
 }
 
 @Composable
 private fun DiscoveryFeedItem(
-    index: Int,
     track: Track,
     isCurrentTrack: Boolean,
-    isPlaying: Boolean,
     onClick: () -> Unit,
     onLikeClick: () -> Unit,
-    onPlayClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -713,17 +718,6 @@ private fun DiscoveryFeedItem(
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Track Index
-        Text(
-            text = "%02d".format(index),
-            fontSize = 12.sp,
-            fontFamily = CircularFontFamily,
-            fontWeight = FontWeight.Bold,
-            color = if (isCurrentTrack) RogTextGold else RogTextSecondary,
-            modifier = Modifier.width(28.dp)
-        )
-
-        // Artwork
         AsyncImage(
             model = track.thumbnailUrl,
             contentDescription = track.title,
@@ -736,7 +730,6 @@ private fun DiscoveryFeedItem(
 
         Spacer(modifier = Modifier.width(12.dp))
 
-        // Title & Artist
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = track.title,
@@ -759,7 +752,6 @@ private fun DiscoveryFeedItem(
             )
         }
 
-        // Like Button
         IconButton(
             onClick = onLikeClick,
             modifier = Modifier.size(32.dp)
@@ -771,21 +763,6 @@ private fun DiscoveryFeedItem(
                 contentDescription = "Like",
                 tint = if (track.isLiked) RogTextGold else RogTextSecondary,
                 modifier = Modifier.size(17.dp)
-            )
-        }
-
-        // Play/Status Action
-        IconButton(
-            onClick = onPlayClick,
-            modifier = Modifier.size(32.dp)
-        ) {
-            Icon(
-                painter = painterResource(
-                    id = if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play
-                ),
-                contentDescription = "Play",
-                tint = if (isCurrentTrack) RogTextGold else RogTextSecondary,
-                modifier = Modifier.size(16.dp)
             )
         }
     }

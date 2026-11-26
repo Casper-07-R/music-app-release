@@ -1,6 +1,13 @@
 package com.koi.backend.lyrics
 
+import com.google.gson.JsonParser
 import kotlinx.coroutines.runBlocking
+import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -339,5 +346,147 @@ class LyricsProviderTest {
             assertEquals("lrcmux", lyrics.source)
             assertTrue("lrcmux should return lines", lyrics.lines.isNotEmpty())
         }
+    }
+
+    @Test
+    fun testRejectsWrongLanguageScriptAndTags() {
+        val tamilTarget = "Hukum - Thalaivar Alappara (Tamil) (From \"Jailer\")"
+        assertTrue(lyricsProvider.hasConflictingLanguageTag("Hukum (Telugu)", tamilTarget))
+        assertFalse(lyricsProvider.hasConflictingLanguageTag("Hukum (Tamil)", tamilTarget))
+
+        val teluguLines = listOf(
+            LyricLine(1000L, "భగవంతుడా ఇది ఏమిటయ్యా అన్యాయం"),
+            LyricLine(5000L, "తలవంచి పోయే రోజు రాదు ఎప్పుడూ")
+        )
+        assertFalse(lyricsProvider.validateLyricScriptLanguage(teluguLines, tamilTarget, "Jailer"))
+
+        val tamilLines = listOf(
+            LyricLine(1000L, "உங்கப்பன் விசில கேட்டவன்"),
+            LyricLine(5000L, "ஹுக்கும் டைகர் கா ஹுக்கும்")
+        )
+        assertTrue(lyricsProvider.validateLyricScriptLanguage(tamilLines, tamilTarget, "Jailer"))
+
+        val romanizedLines = listOf(
+            LyricLine(1000L, "Hukum Tiger Ka Hukum"),
+            LyricLine(5000L, "Alappara Kelapparom")
+        )
+        assertTrue(lyricsProvider.validateLyricScriptLanguage(romanizedLines, tamilTarget, "Jailer"))
+    }
+
+    @Test
+    fun testRejectsUnsolicitedVariantsAndSingleWordSubstrings() {
+        assertFalse(lyricsProvider.isSongTitleMatch("Starboy (Instrumental)", "Starboy"))
+        assertFalse(lyricsProvider.isSongTitleMatch("Starboy - Slowed + Reverb", "Starboy"))
+        assertFalse(lyricsProvider.isSongTitleMatch("Starboy (Karaoke Version)", "Starboy"))
+        assertFalse(lyricsProvider.isSongTitleMatch("Yellow Submarine", "Yellow"))
+        assertFalse(lyricsProvider.isSongTitleMatch("Love Story", "Love Me"))
+        assertTrue(lyricsProvider.isSongTitleMatch("Starboy (Acoustic)", "Starboy (Acoustic)"))
+    }
+
+    @Test
+    fun testStripsNetEaseCjkCreditsAndLyricsOvhBoilerplate() {
+        val dirtyLines = listOf(
+            LyricLine(0L, "作词 : Abel Tesfaye"),
+            LyricLine(100L, "作曲 : Abel Tesfaye / Guy-Manuel de Homem-Christo"),
+            LyricLine(200L, "制作人 : Daft Punk"),
+            LyricLine(null, "Paroles de la chanson Starboy par The Weeknd"),
+            LyricLine(15710L, "I'm tryna put you in the worst mood, ah"),
+            LyricLine(18360L, "P1 cleaner than your church shoes, ah")
+        )
+        val cleaned = lyricsProvider.cleanLyricLines(dirtyLines)
+        assertEquals(2, cleaned.size)
+        assertEquals("I'm tryna put you in the worst mood, ah", cleaned[0].text)
+        assertEquals("P1 cleaner than your church shoes, ah", cleaned[1].text)
+    }
+
+    @Test
+    fun testArtistMatchHandlesCompoundAndAccentedArtists() {
+        assertTrue(lyricsProvider.isArtistMatch("The Weeknd, Daft Punk", "The Weeknd"))
+        assertTrue(lyricsProvider.isArtistMatch("AR Rahman", "A.R. Rahman"))
+        assertTrue(lyricsProvider.isArtistMatch("Sushin Shyam & Vaasi", "Sushin Shyam"))
+        assertTrue(lyricsProvider.isArtistMatch("Anirudh", "Anirudh Ravichander"))
+        assertFalse(lyricsProvider.isArtistMatch("John Mayer", "John Legend"))
+    }
+
+    @Test
+    fun testRankLrclibCandidatesRejectsWrongArtistAndBadDuration() {
+        val json = """
+            [
+              {
+                "trackName": "Home",
+                "artistName": "Wrong Artist",
+                "albumName": "Wrong Album",
+                "duration": 200.0,
+                "syncedLyrics": "[00:10.00] Wrong lyrics"
+              },
+              {
+                "trackName": "Home",
+                "artistName": "Right Artist",
+                "albumName": "Right Album",
+                "duration": 280.0,
+                "syncedLyrics": "[00:10.00] Duration too far off"
+              },
+              {
+                "trackName": "Home",
+                "artistName": "Right Artist",
+                "albumName": "Right Album",
+                "duration": 202.0,
+                "syncedLyrics": "[00:10.00] Authentic matching line"
+              }
+            ]
+        """.trimIndent()
+        val arr = JsonParser.parseString(json).asJsonArray
+        val ranked = lyricsProvider.rankLrclibCandidates(arr, durationSeconds = 200, targetTitle = "Home", targetArtist = "Right Artist")
+
+        assertEquals(1, ranked.size)
+        assertEquals("Right Artist", ranked.first().get("artistName").asString)
+        assertEquals(202.0, ranked.first().get("duration").asDouble, 0.01)
+    }
+
+    @Test
+    fun testGetLyricsOmitsPlaylistAlbumOnLrclibAndKeepsPlainUnsynced() = runBlocking {
+        var sawAlbumParamOnLrclibGet = false
+        val mockInterceptor = Interceptor { chain ->
+            val req = chain.request()
+            val url = req.url.toString()
+            if (url.startsWith("https://lrclib.net/api/get")) {
+                if (req.url.queryParameter("album_name") != null) {
+                    sawAlbumParamOnLrclibGet = true
+                }
+                val body = """{"trackName":"PlainSong","artistName":"PlainArtist","plainLyrics":"Line one\nLine two\nLine three","syncedLyrics":null}"""
+                Response.Builder()
+                    .request(req)
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(body.toResponseBody("application/json".toMediaType()))
+                    .build()
+            } else {
+                Response.Builder()
+                    .request(req)
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(404)
+                    .message("Not Found")
+                    .body("".toResponseBody("application/json".toMediaType()))
+                    .build()
+            }
+        }
+        val mockedProvider = LyricsProvider(
+            okHttpClient = OkHttpClient.Builder().addInterceptor(mockInterceptor).build(),
+            innerTube = null
+        )
+
+        val lyrics = mockedProvider.getLyrics(
+            title = "PlainSong",
+            artist = "PlainArtist",
+            album = "YouTube Playlist That Causes 404",
+            durationSeconds = 180
+        )
+
+        assertFalse("LRCLIB /get must not pass arbitrary album_name that triggers 404s", sawAlbumParamOnLrclibGet)
+        assertNotNull(lyrics)
+        assertFalse("Plain lyrics must stay synced=false instead of inventing fake timestamps", lyrics!!.synced)
+        assertNull(lyrics.lines[0].timeMs)
+        assertEquals(3, lyrics.lines.size)
     }
 }

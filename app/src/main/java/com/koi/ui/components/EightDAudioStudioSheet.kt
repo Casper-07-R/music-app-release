@@ -47,6 +47,7 @@ fun EightDAudioStudioSheet(
     onProfileSelect: (AudioProfile) -> Unit = {},
     onResetProfile: (AudioProfile) -> Unit = {},
     onResetToFlat: () -> Unit,
+    onOpenEqualizer: () -> Unit = {},
     onSetSleepTimer: (Int) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
@@ -379,15 +380,6 @@ fun EightDAudioStudioSheet(
                                 }
                             }
                         }
-
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = dspConfig.activeProfile.fullDescription,
-                            fontSize = 11.sp,
-                            fontFamily = CircularFontFamily,
-                            color = RogTextSecondary,
-                            lineHeight = 15.sp
-                        )
                     }
                 }
 
@@ -479,7 +471,7 @@ fun EightDAudioStudioSheet(
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
-            // Clarity & Bass Boost (No border)
+            // Clarity, Hearing & Stage (No border)
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -493,25 +485,28 @@ fun EightDAudioStudioSheet(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Acoustic Clarity & Bass",
+                                text = "Acoustic Clarity & Stage",
                                 fontSize = 14.sp,
                                 fontFamily = CircularFontFamily,
                                 fontWeight = FontWeight.Bold,
                                 color = RogTextPrimary
                             )
-                            Switch(
-                                checked = dspConfig.bassBoostEnabled,
-                                onCheckedChange = { onConfigChange(dspConfig.copy(bassBoostEnabled = it)) },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = RogObsidian,
-                                    checkedTrackColor = RogTextGold,
-                                    uncheckedThumbColor = RogTextMuted,
-                                    uncheckedTrackColor = RogSurfaceHighlight
+                            TextButton(
+                                onClick = onOpenEqualizer,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text(
+                                    text = if (dspConfig.eqEnabled) "EQ: ${dspConfig.eqPreset}" else "Open 10-Band EQ",
+                                    fontSize = 11.sp,
+                                    fontFamily = CircularFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    color = RogTextGold
                                 )
-                            )
+                            }
                         }
 
-                        Column(modifier = Modifier.padding(top = 10.dp)) {
+                        Column(modifier = Modifier.padding(top = 6.dp)) {
                             DspSliderRow(
                                 label = "Bass Gain",
                                 valueText = "+${String.format("%.1f", dspConfig.bassBoostGainDb)} dB",
@@ -521,11 +516,43 @@ fun EightDAudioStudioSheet(
                             )
 
                             DspSliderRow(
+                                label = "Vocal Clarity",
+                                valueText = "${if (dspConfig.vocalPresenceDb > 0.05f) "+" else ""}${String.format("%.1f", dspConfig.vocalPresenceDb)} dB",
+                                value = dspConfig.vocalPresenceDb,
+                                range = -4f..6f,
+                                onValueChange = { onConfigChange(dspConfig.copy(vocalPresenceDb = it)) }
+                            )
+
+                            DspSliderRow(
                                 label = "Treble Air",
                                 valueText = "+${String.format("%.1f", dspConfig.trebleClarityDb)} dB",
                                 value = dspConfig.trebleClarityDb,
                                 range = 0f..8f,
                                 onValueChange = { onConfigChange(dspConfig.copy(trebleClarityDb = it)) }
+                            )
+
+                            DspSliderRow(
+                                label = "Micro-Detail",
+                                valueText = "${(dspConfig.microDetailLevel * 100).toInt()}%",
+                                value = dspConfig.microDetailLevel,
+                                range = 0f..1f,
+                                onValueChange = { onConfigChange(dspConfig.copy(microDetailLevel = it)) }
+                            )
+
+                            DspSliderRow(
+                                label = "Stage Width",
+                                valueText = "${String.format("%.2f", dspConfig.stereoWidth)}x",
+                                value = dspConfig.stereoWidth,
+                                range = 0.7f..1.6f,
+                                onValueChange = { onConfigChange(dspConfig.copy(stereoWidth = it)) }
+                            )
+
+                            DspSliderRow(
+                                label = "Crossfeed",
+                                valueText = "${(dspConfig.crossfeedAmount * 100).toInt()}%",
+                                value = dspConfig.crossfeedAmount,
+                                range = 0f..1f,
+                                onValueChange = { onConfigChange(dspConfig.copy(crossfeedAmount = it, crossfeed = it > 0.02f)) }
                             )
                         }
                     }

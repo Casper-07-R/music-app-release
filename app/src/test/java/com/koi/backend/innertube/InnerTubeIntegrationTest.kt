@@ -103,9 +103,35 @@ class InnerTubeIntegrationTest {
     fun testSearchPlaylists() = runBlocking {
         val playlists = client.searchPlaylists("Lofi hip hop")
         assertTrue("Should return playlists", playlists.isNotEmpty())
+        assertTrue(
+            "No playlist id should be a channel id (UC...)",
+            playlists.none { it.id.startsWith("UC") }
+        )
         val first = playlists.first()
         assertTrue("Playlist id should not be empty", first.id.isNotBlank())
         assertTrue("Playlist title should not be empty", first.title.isNotBlank())
+
+        val browsed = client.getPlaylist(first.id)
+        assertTrue(
+            "Searched playlist '${first.title}' (${first.id}) must return tracks when opened",
+            browsed.tracks.isNotEmpty()
+        )
+    }
+
+    @Test
+    fun testComprehensiveSearchPlaylistsContainTracksWhenOpened() = runBlocking {
+        val comp = client.searchComprehensive("workout hits")
+        assertTrue("Comprehensive search should include playlists", comp.playlists.isNotEmpty())
+        assertTrue(
+            "Comprehensive playlists must not use UC channel ids",
+            comp.playlists.none { it.id.startsWith("UC") }
+        )
+        val nonAlbumPlaylist = comp.playlists.firstOrNull { !it.isAlbum } ?: comp.playlists.first()
+        val browsed = client.getPlaylist(nonAlbumPlaylist.id)
+        assertTrue(
+            "Opened playlist '${nonAlbumPlaylist.title}' (${nonAlbumPlaylist.id}) should contain tracks",
+            browsed.tracks.isNotEmpty()
+        )
     }
 
     @Test

@@ -1,16 +1,22 @@
 package com.koi.ui.viewmodel
 
 import android.content.Context
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koi.KoiApplication
 import com.koi.backend.audio.*
+import com.koi.backend.db.DayPlayStat
+import com.koi.backend.db.TopLabelStat
+import com.koi.backend.db.TopSongStat
 import com.koi.backend.download.*
 import com.koi.backend.innertube.*
 import com.koi.backend.player.NetworkCoverageLevel
 import com.koi.backend.profile.UserProfileManager
+import com.koi.backend.share.PlaylistShareCodec
+import com.koi.backend.share.QrCodeHelper
 import com.koi.backend.update.AppUpdateManager
 import com.koi.backend.update.GitHubAsset
 import com.koi.backend.update.GitHubRelease
@@ -36,8 +42,17 @@ data class UsageMetrics(
     val totalPlaylists: Int = 0,
     val cachedStreams: Int = 0,
     val cachedLyrics: Int = 0,
+    val downloadedTracksCount: Int = 0,
+    val downloadsSizeMb: Float = 0f,
     val estimatedCacheSizeMb: Float = 0f,
     val listeningTimeSeconds: Long = 0L,
+    val lifetimeListeningSeconds: Long = 0L,
+    val topSongs: List<TopSongStat> = emptyList(),
+    val topArtists: List<TopLabelStat> = emptyList(),
+    val topPlaylists: List<TopLabelStat> = emptyList(),
+    val topGenres: List<TopLabelStat> = emptyList(),
+    val dailyPlays7Days: List<DayPlayStat> = emptyList(),
+    val listeningHistoryPoints: List<Float> = List(24) { 0.08f },
     val memoryUsedMb: Long = 0L,
     val memoryMaxMb: Long = 0L,
     val audioSessionId: Int = 0
@@ -64,6 +79,7 @@ data class PlaybackUiState(
     val selectedTab: NavigationTab = NavigationTab.HOME,
     val selectedFilter: String = "All",
     val selectedPlaylist: Playlist? = null,
+    val isLoadingPlaylist: Boolean = false,
     val quickAccessItems: List<QuickAccessItem> = emptyList(),
     val recentlyPlayed: List<Album> = emptyList(),
     val madeForYou: List<Playlist> = emptyList(),
@@ -122,7 +138,10 @@ data class PlaybackUiState(
     val showOnboardingTutorial: Boolean = false,
     val onboardingTutorialStep: Int = 0,
     val isUpdateDialogDismissed: Boolean = false,
-    val isMiniBarDismissed: Boolean = false
+    val isMiniBarDismissed: Boolean = false,
+    val playlistToShareQr: Playlist? = null,
+    val showQrScanner: Boolean = false,
+    val isImportingPlaylistQr: Boolean = false
 )
 
 class PlaybackViewModel : ViewModel() {
@@ -203,40 +222,17 @@ class PlaybackViewModel : ViewModel() {
     )
     val uiState: StateFlow<PlaybackUiState> = _uiState.asStateFlow()
 
+    private val statsPrefs = app.getSharedPreferences("koi_stats_prefs", Context.MODE_PRIVATE)
     private var sessionListeningSeconds: Long = 0L
-    private val _usageMetrics = MutableStateFlow(UsageMetrics())
+    private var lifetimeListeningSeconds: Long = statsPrefs.getLong("lifetime_listening_seconds", 0L)
+    private val _usageMetrics = MutableStateFlow(UsageMetrics(lifetimeListeningSeconds = lifetimeListeningSeconds))
     val usageMetrics: StateFlow<UsageMetrics> = _usageMetrics.asStateFlow()
 
     private val prefs = app.getSharedPreferences("koi_dsp_prefs", Context.MODE_PRIVATE)
 
     private val _dspConfig = MutableStateFlow(
         prefs.getString("last_dsp_config", null)?.let { json ->
-            val loaded = AudioDspConfig.fromJson(json)
-            if (loaded != null && loaded.activeProfile == AudioProfile.BALANCED) {
-                val updatedSpeed = when (loaded.spatialMode) {
-                    SpatialMode.MODE_16D -> 7.5f
-                    else -> 11.0f
-                }
-                val updatedDepth = when (loaded.spatialMode) {
-                    SpatialMode.MODE_16D -> 0.88f
-                    else -> 0.80f
-                }
-                loaded.copy(
-                    rotationSpeedSeconds = updatedSpeed,
-                    panDepth = updatedDepth,
-                    preGainDb = 2.0f,
-                    trebleClarityDb = 1.1f,
-                    bassBoostGainDb = 2.8f,
-                    roomSize = 0.38f,
-                    reverbLevel = if (loaded.is8dEnabled) 0.05f else 0.0f,
-                    stereoWidth = if (loaded.is8dEnabled) 1.14f else 1.0f,
-                    crossfeed = false,
-                    crossfeedAmount = 0.0f,
-                    distanceFrontBackCue = false
-                )
-            } else {
-                loaded
-            }
+            AudioDspConfig.fromJson(json)
         } ?: AudioDspConfig.createConfig(SpatialMode.OFF, AudioProfile.BALANCED)
     )
     val dspConfig: StateFlow<AudioDspConfig> = _dspConfig.asStateFlow()
@@ -252,7 +248,7 @@ class PlaybackViewModel : ViewModel() {
     private var playlistSearchJob: Job? = null
 
     init {
-        database.clearCustomPresets()
+        loadCustomPresets()
         _uiState.update { it.copy(selectedEqPreset = _dspConfig.value.eqPreset) }
         playerEngine.applyDspConfig(_dspConfig.value)
         prefs.edit().putString("last_dsp_config", _dspConfig.value.toJson()).apply()
@@ -268,24 +264,39 @@ class PlaybackViewModel : ViewModel() {
                 if (song != null) {
                     val isLiked = database.isLiked(song.videoId)
                     val isDownloaded = database.isDownloaded(song.videoId)
-                    val cached = database.getCachedLyrics(song.videoId)
-                    val currentLyrics = if (cached != null) {
-                        cached.copy(videoId = song.videoId)
-                    } else {
-                        playerEngine.currentLyrics.value
+                    val inMemoryLyrics = playerEngine.currentLyrics.value?.takeIf {
+                        it.videoId.isEmpty() || it.videoId == song.videoId
                     }
-                    val matchingLyrics = if (currentLyrics?.videoId == song.videoId) {
-                        lyricsProvider.ensureLiveLyrics(currentLyrics, song.durationSeconds)
-                    } else null
+                    val cached = database.getCachedLyrics(song.videoId)?.copy(videoId = song.videoId)
+                    val matchingLyrics = inMemoryLyrics ?: cached
+                    val cleanedLines = matchingLyrics?.let { lyricsProvider.cleanLyricLines(it.lines) } ?: emptyList()
+                    val hasAuthenticSync = matchingLyrics != null &&
+                        matchingLyrics.synced &&
+                        cleanedLines.any { it.timeMs != null }
+
                     _uiState.update { state ->
+                        val prevSameTrack = state.currentTrack.takeIf { it.id == song.videoId }
+                        val finalPlainLines = if (cleanedLines.isNotEmpty()) {
+                            cleanedLines.map { it.text }
+                        } else {
+                            prevSameTrack?.lyrics ?: emptyList()
+                        }
+                        val finalSyncedLines = if (hasAuthenticSync) {
+                            cleanedLines.filter { it.timeMs != null }
+                        } else if (cleanedLines.isEmpty() && prevSameTrack != null) {
+                            prevSameTrack.syncedLyrics
+                        } else {
+                            emptyList()
+                        }
+
                         state.copy(
                             currentTrack = Track.fromSongItem(
                                 item = song,
                                 isLiked = isLiked,
                                 isDownloaded = isDownloaded,
-                                syncedLyrics = matchingLyrics?.lines ?: emptyList()
+                                syncedLyrics = finalSyncedLines
                             ).copy(
-                                lyrics = matchingLyrics?.lines?.map { it.text } ?: emptyList()
+                                lyrics = finalPlainLines
                             ),
                             isDownloaded = isDownloaded,
                             isMiniBarDismissed = false
@@ -307,11 +318,12 @@ class PlaybackViewModel : ViewModel() {
                 _uiState.update { state ->
                     val curTrack = state.currentTrack
                     if (lyrics != null && (lyrics.videoId.isEmpty() || lyrics.videoId == curTrack.id)) {
-                        val liveLyrics = lyricsProvider.ensureLiveLyrics(lyrics, curTrack.durationSeconds)
+                        val cleanedLines = lyricsProvider.cleanLyricLines(lyrics.lines)
+                        val hasAuthenticSync = lyrics.synced && cleanedLines.any { it.timeMs != null }
                         state.copy(
                             currentTrack = curTrack.copy(
-                                lyrics = liveLyrics.lines.map { line -> line.text },
-                                syncedLyrics = liveLyrics.lines
+                                lyrics = cleanedLines.map { line -> line.text },
+                                syncedLyrics = if (hasAuthenticSync) cleanedLines.filter { it.timeMs != null } else emptyList()
                             )
                         )
                     } else if (lyrics == null) {
@@ -399,14 +411,27 @@ class PlaybackViewModel : ViewModel() {
             }
         }
 
-        // Realtime session listening timer
+        // Realtime 1-second session + lifetime listening timer & live Profile metrics heartbeat
         viewModelScope.launch {
+            var tickCount = 0
             while (isActive) {
-                if (_uiState.value.isPlaying) {
+                tickCount++
+                val isPlaying = _uiState.value.isPlaying
+                if (isPlaying) {
                     sessionListeningSeconds++
+                    lifetimeListeningSeconds++
                     if (sessionListeningSeconds % 5 == 0L) {
-                        _usageMetrics.update { it.copy(listeningTimeSeconds = sessionListeningSeconds) }
+                        statsPrefs.edit().putLong("lifetime_listening_seconds", lifetimeListeningSeconds).apply()
                     }
+                }
+                _usageMetrics.update { current ->
+                    current.copy(
+                        listeningTimeSeconds = sessionListeningSeconds,
+                        lifetimeListeningSeconds = lifetimeListeningSeconds
+                    )
+                }
+                if (_uiState.value.selectedTab == NavigationTab.PROFILE && tickCount % 2 == 0) {
+                    refreshUsageMetrics()
                 }
                 delay(1000)
             }
@@ -417,6 +442,7 @@ class PlaybackViewModel : ViewModel() {
         refreshDownloads()
         loadHomeData()
         refreshUsageMetrics()
+        repairSavedSongsWithMissingArtists()
 
         // Background update check on app launch
         checkForUpdate()
@@ -1165,6 +1191,21 @@ class PlaybackViewModel : ViewModel() {
             val totalPlaylists = database.getPlaylistsCount()
             val cachedStreams = database.getCachedStreamsCount()
             val cachedLyrics = database.getCachedLyricsCount()
+            val downloadedCount = database.getDownloadedSongsCount()
+            val downloadsMb = database.getTotalDownloadedSizeBytes(app) / (1024f * 1024f)
+            val topSongs = database.getTopSongs(limit = 5)
+            val topArtists = database.getTopArtists(limit = 5)
+            val topPlaylists = database.getTopPlaylists(limit = 4)
+            val topGenres = database.getTopGenres(limit = 5)
+            val dailyPlays7Days = database.getDailyPlaysLast7Days()
+
+            if (lifetimeListeningSeconds == 0L && totalPlays > 0) {
+                val seeded = database.getEstimatedHistoryListeningSeconds()
+                if (seeded > 0L) {
+                    lifetimeListeningSeconds = seeded
+                    statsPrefs.edit().putLong("lifetime_listening_seconds", lifetimeListeningSeconds).apply()
+                }
+            }
 
             var cacheBytes = 0L
             try {
@@ -1195,8 +1236,16 @@ class PlaybackViewModel : ViewModel() {
                     totalPlaylists = totalPlaylists,
                     cachedStreams = cachedStreams,
                     cachedLyrics = cachedLyrics,
+                    downloadedTracksCount = downloadedCount,
+                    downloadsSizeMb = downloadsMb,
                     estimatedCacheSizeMb = cacheMb,
                     listeningTimeSeconds = sessionListeningSeconds,
+                    lifetimeListeningSeconds = lifetimeListeningSeconds,
+                    topSongs = topSongs,
+                    topArtists = topArtists,
+                    topPlaylists = topPlaylists,
+                    topGenres = topGenres,
+                    dailyPlays7Days = dailyPlays7Days,
                     memoryUsedMb = usedMem,
                     memoryMaxMb = maxMem,
                     audioSessionId = audioSessionId
@@ -1226,70 +1275,96 @@ class PlaybackViewModel : ViewModel() {
 
     fun openPlaylist(playlist: Playlist) {
         viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                database.recordPlaylistPlay(playlist.id, playlist.title)
+            }
             val isAlbum = playlist.isAlbum || playlist.id.startsWith("MPRE")
-            val localInfo = database.getPlaylistInfo(playlist.id)
-            val currentTitle = localInfo?.title ?: playlist.title
-            val currentDesc = localInfo?.description ?: playlist.description
-            val currentCover = localInfo?.coverUrl ?: playlist.thumbnailUrl
+            val (currentTitle, currentDesc, currentCover, tracks) = withContext(Dispatchers.IO) {
+                val localInfo = database.getPlaylistInfo(playlist.id)
+                val title = localInfo?.title ?: playlist.title
+                val desc = localInfo?.description ?: playlist.description
+                val cover = localInfo?.coverUrl ?: playlist.thumbnailUrl
 
-            val tracks = if (playlist.isLikedSongs) {
-                database.getLikedSongs().map { it.toTrack(isLiked = true) }
-            } else if (playlist.id.startsWith("shelf_")) {
-                val downloaded = database.getDownloadedPlaylistTracks(playlist.id)
-                if (downloaded.isNotEmpty()) {
-                    downloaded.map { it.toTrack(database.isLiked(it.videoId)) }
-                } else {
-                    playlist.tracks
-                }
-            } else {
-                val localTracks = database.getPlaylistTracks(playlist.id)
-                if (localTracks.isNotEmpty()) {
-                    localTracks.map { song ->
-                        val thumb = song.thumbnailUrl?.ifBlank { null }
-                            ?: currentCover?.ifBlank { null }
-                            ?: playlist.thumbnailUrl?.ifBlank { null }
-                            ?: "https://i.ytimg.com/vi/${song.videoId}/hqdefault.jpg"
-                        song.copy(thumbnailUrl = thumb).toTrack(database.isLiked(song.videoId))
-                    }
-                } else {
+                val loadedTracks = if (playlist.isLikedSongs) {
+                    database.getLikedSongs().map { it.toTrack(isLiked = true) }
+                } else if (playlist.id.startsWith("shelf_")) {
                     val downloaded = database.getDownloadedPlaylistTracks(playlist.id)
                     if (downloaded.isNotEmpty()) {
                         downloaded.map { it.toTrack(database.isLiked(it.videoId)) }
                     } else {
-                        playlist.tracks.map { track ->
-                            val thumb = track.thumbnailUrl?.ifBlank { null }
-                                ?: currentCover?.ifBlank { null }
+                        playlist.tracks
+                    }
+                } else {
+                    val localTracks = database.getPlaylistTracks(playlist.id)
+                    if (localTracks.isNotEmpty()) {
+                        localTracks.map { song ->
+                            val thumb = song.thumbnailUrl?.ifBlank { null }
+                                ?: cover?.ifBlank { null }
                                 ?: playlist.thumbnailUrl?.ifBlank { null }
-                                ?: "https://i.ytimg.com/vi/${track.id}/hqdefault.jpg"
-                            track.copy(thumbnailUrl = thumb)
+                                ?: "https://i.ytimg.com/vi/${song.videoId}/hqdefault.jpg"
+                            song.copy(thumbnailUrl = thumb).toTrack(database.isLiked(song.videoId))
+                        }
+                    } else {
+                        val downloaded = database.getDownloadedPlaylistTracks(playlist.id)
+                        if (downloaded.isNotEmpty()) {
+                            downloaded.map { it.toTrack(database.isLiked(it.videoId)) }
+                        } else {
+                            playlist.tracks.map { track ->
+                                val thumb = track.thumbnailUrl?.ifBlank { null }
+                                    ?: cover?.ifBlank { null }
+                                    ?: playlist.thumbnailUrl?.ifBlank { null }
+                                    ?: "https://i.ytimg.com/vi/${track.id}/hqdefault.jpg"
+                                track.copy(thumbnailUrl = thumb)
+                            }
                         }
                     }
                 }
+                listOf(title, desc, cover, loadedTracks)
             }
+
+            @Suppress("UNCHECKED_CAST")
+            val resolvedTitle = currentTitle as String
+            val resolvedDesc = currentDesc as String
+            val resolvedCover = currentCover as String?
+            @Suppress("UNCHECKED_CAST")
+            val resolvedTracks = tracks as List<Track>
+
+            val canFetchOnline = resolvedTracks.isEmpty() &&
+                !playlist.id.startsWith("UC") &&
+                (playlist.id.startsWith("VL") ||
+                    playlist.id.startsWith("MPRE") ||
+                    playlist.id.startsWith("PL") ||
+                    playlist.id.startsWith("RD") ||
+                    playlist.id.startsWith("OLAK"))
 
             _uiState.update {
                 it.copy(
                     selectedPlaylist = playlist.copy(
-                        title = currentTitle,
-                        description = currentDesc,
-                        thumbnailUrl = currentCover,
-                        tracks = tracks,
-                        trackCount = tracks.size,
+                        title = resolvedTitle,
+                        description = resolvedDesc,
+                        thumbnailUrl = resolvedCover,
+                        tracks = resolvedTracks,
+                        trackCount = resolvedTracks.size,
                         isAlbum = isAlbum
                     ),
+                    isLoadingPlaylist = canFetchOnline,
                     showSettingsScreen = false
                 )
             }
 
-            if (tracks.isEmpty() && (playlist.id.startsWith("VL") || playlist.id.startsWith("MPRE") || playlist.id.startsWith("PL") || playlist.id.startsWith("RD") || playlist.id.startsWith("OLAK"))) {
-                viewModelScope.launch {
-                    val result = innerTube.getPlaylist(playlist.id)
-                    val onlineTracks = result.tracks.map { song ->
-                        val thumb = song.thumbnailUrl?.ifBlank { null }
-                            ?: result.thumbnailUrl?.ifBlank { null }
-                            ?: playlist.thumbnailUrl?.ifBlank { null }
-                            ?: "https://i.ytimg.com/vi/${song.videoId}/hqdefault.jpg"
-                        song.copy(thumbnailUrl = thumb).toTrack(database.isLiked(song.videoId))
+            if (canFetchOnline) {
+                try {
+                    val result = withContext(Dispatchers.IO) {
+                        innerTube.getPlaylist(playlist.id)
+                    }
+                    val onlineTracks = withContext(Dispatchers.IO) {
+                        result.tracks.map { song ->
+                            val thumb = song.thumbnailUrl?.ifBlank { null }
+                                ?: result.thumbnailUrl?.ifBlank { null }
+                                ?: playlist.thumbnailUrl?.ifBlank { null }
+                                ?: "https://i.ytimg.com/vi/${song.videoId}/hqdefault.jpg"
+                            song.copy(thumbnailUrl = thumb).toTrack(database.isLiked(song.videoId))
+                        }
                     }
                     if (_uiState.value.selectedPlaylist?.id == playlist.id) {
                         _uiState.update {
@@ -1299,15 +1374,20 @@ class PlaybackViewModel : ViewModel() {
                                     cur.copy(
                                         title = if (cur.title.isNotBlank()) cur.title else result.title,
                                         description = if (result.description.isNullOrBlank()) cur.description else result.description,
-                                        creator = result.subtitle ?: cur.creator,
+                                        creator = if (result.subtitle.isNullOrBlank()) cur.creator else result.subtitle,
                                         thumbnailUrl = finalThumb,
                                         tracks = onlineTracks,
                                         trackCount = onlineTracks.size,
                                         isAlbum = cur.isAlbum || result.isAlbum || cur.id.startsWith("MPRE")
                                     )
-                                }
+                                },
+                                isLoadingPlaylist = false
                             )
                         }
+                    }
+                } finally {
+                    if (_uiState.value.selectedPlaylist?.id == playlist.id && _uiState.value.isLoadingPlaylist) {
+                        _uiState.update { it.copy(isLoadingPlaylist = false) }
                     }
                 }
             }
@@ -1505,30 +1585,250 @@ class PlaybackViewModel : ViewModel() {
 
     fun closePlaylist() {
         closeAddSongsSheet()
-        _uiState.update { it.copy(selectedPlaylist = null) }
+        _uiState.update { it.copy(selectedPlaylist = null, isLoadingPlaylist = false) }
+    }
+
+    // --- PLAYLIST QR SHARING & IMPORTING ---
+
+    fun openSharePlaylistQr(playlist: Playlist) {
+        viewModelScope.launch {
+            val resolvedTracks = if (playlist.tracks.isNotEmpty()) {
+                playlist.tracks
+            } else {
+                withContext(Dispatchers.IO) {
+                    when {
+                        playlist.isLikedSongs -> database.getLikedSongs().map { it.toTrack(isLiked = true) }
+                        else -> {
+                            val local = database.getPlaylistTracks(playlist.id)
+                            if (local.isNotEmpty()) {
+                                local.map { it.toTrack(database.isLiked(it.videoId)) }
+                            } else {
+                                database.getDownloadedPlaylistTracks(playlist.id)
+                                    .map { it.toTrack(database.isLiked(it.videoId)) }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (resolvedTracks.isEmpty()) {
+                Toast.makeText(app, "Add songs to this playlist before sharing", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            _uiState.update {
+                it.copy(
+                    playlistToShareQr = playlist.copy(
+                        tracks = resolvedTracks,
+                        trackCount = resolvedTracks.size
+                    )
+                )
+            }
+        }
+    }
+
+    fun closeSharePlaylistQr() {
+        _uiState.update { it.copy(playlistToShareQr = null) }
+    }
+
+    fun openQrScanner() {
+        _uiState.update { it.copy(showQrScanner = true) }
+    }
+
+    fun closeQrScanner() {
+        _uiState.update { it.copy(showQrScanner = false) }
+    }
+
+    fun importPlaylistFromQrString(rawQr: String) {
+        if (rawQr.isBlank()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isImportingPlaylistQr = true) }
+            val decoded = withContext(Dispatchers.IO) {
+                PlaylistShareCodec.decode(rawQr)
+            }
+            decoded.onSuccess { shared ->
+                importSharedPlaylist(shared)
+            }.onFailure { err ->
+                _uiState.update { it.copy(isImportingPlaylistQr = false) }
+                Toast.makeText(
+                    app,
+                    err.message ?: "Invalid Koi playlist QR code",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    fun importPlaylistFromImageUri(imageUri: Uri) {
+        if (_uiState.value.isImportingPlaylistQr) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isImportingPlaylistQr = true) }
+            val qrResult = QrCodeHelper.decodeQrFromImageUri(app, imageUri)
+            val qrText = qrResult.getOrNull()
+            if (qrText == null) {
+                _uiState.update { it.copy(isImportingPlaylistQr = false) }
+                Toast.makeText(
+                    app,
+                    qrResult.exceptionOrNull()?.message ?: "No QR code found in this image",
+                    Toast.LENGTH_SHORT
+                ).show()
+                return@launch
+            }
+
+            val decoded = withContext(Dispatchers.IO) {
+                PlaylistShareCodec.decode(qrText)
+            }
+            decoded.onSuccess { shared ->
+                importSharedPlaylist(shared)
+            }.onFailure {
+                _uiState.update { it.copy(isImportingPlaylistQr = false) }
+                Toast.makeText(
+                    app,
+                    "This QR code is not a valid Koi playlist",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    private suspend fun importSharedPlaylist(shared: PlaylistShareCodec.SharedPlaylistData) {
+        val (targetPlaylist, alreadyExisted) = withContext(Dispatchers.IO) {
+            val newTrackIds = shared.songs.map { it.videoId }
+            val existingMatch = database.getAllPlaylists().firstOrNull { info ->
+                info.title.equals(shared.title, ignoreCase = true) &&
+                    database.getPlaylistTracks(info.id).map { it.videoId } == newTrackIds
+            }
+
+            if (existingMatch != null) {
+                val existingTracks = database.getPlaylistTracks(existingMatch.id)
+                    .map { it.toTrack(database.isLiked(it.videoId)) }
+                val pl = Playlist(
+                    id = existingMatch.id,
+                    title = existingMatch.title,
+                    description = existingMatch.description ?: "${existingTracks.size} songs",
+                    trackCount = existingTracks.size,
+                    thumbnailUrl = existingMatch.coverUrl,
+                    creator = "You",
+                    tracks = existingTracks
+                )
+                pl to true
+            } else {
+                val createdId = database.createPlaylist(
+                    title = shared.title,
+                    description = shared.description.ifBlank { null },
+                    coverUrl = shared.coverUrl
+                )
+                database.addTracksToPlaylist(createdId, shared.songs)
+                val savedTracks = database.getPlaylistTracks(createdId)
+                    .map { it.toTrack(database.isLiked(it.videoId)) }
+                val pl = Playlist(
+                    id = createdId,
+                    title = shared.title,
+                    description = shared.description.ifBlank { "${savedTracks.size} songs" },
+                    trackCount = savedTracks.size,
+                    thumbnailUrl = shared.coverUrl ?: savedTracks.firstOrNull()?.thumbnailUrl,
+                    creator = "You",
+                    tracks = savedTracks
+                )
+                pl to false
+            }
+        }
+
+        refreshLibrary()
+        refreshUsageMetrics()
+
+        _uiState.update {
+            it.copy(
+                selectedTab = NavigationTab.YOUR_LIBRARY,
+                showQrScanner = false,
+                isImportingPlaylistQr = false,
+                showSettingsScreen = false,
+                showDownloadManager = false,
+                isFullScreenPlayerExpanded = false,
+                artistStack = emptyList(),
+                currentArtistProfile = null,
+                showOnboardingTutorial = false,
+                playlistToShareQr = null
+            )
+        }
+        openPlaylist(targetPlaylist)
+
+        val message = if (alreadyExisted) {
+            "\"${targetPlaylist.title}\" is already in your library"
+        } else {
+            "Added playlist \"${targetPlaylist.title}\" (${shared.songs.size} songs)"
+        }
+        Toast.makeText(app, message, Toast.LENGTH_LONG).show()
     }
 
     // --- 8D AUDIO & DSP METHODS ---
 
+    private fun loadCustomPresets() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val raw = database.getCustomPresets()
+            val parsed = linkedMapOf<String, AudioDspConfig>()
+            raw.forEach { (name, json) ->
+                AudioDspConfig.fromJson(json)?.let { cfg ->
+                    parsed[name] = cfg.copy(eqPreset = name, eqEnabled = true)
+                }
+            }
+            _customPresets.value = parsed
+        }
+    }
+
+    fun saveCustomPreset(name: String): Boolean {
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) return false
+        if (EqPresets.SPEC_MAP.keys.any { it.equals(cleanName, ignoreCase = true) } ||
+            cleanName.equals("Custom", ignoreCase = true)
+        ) {
+            Toast.makeText(app, "Choose a unique name for your custom profile", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        val snapshot = _dspConfig.value.copy(
+            eqEnabled = true,
+            eqPreset = cleanName
+        )
+        viewModelScope.launch(Dispatchers.IO) {
+            database.saveCustomPreset(cleanName, snapshot.toJson())
+        }
+        _customPresets.update { it + (cleanName to snapshot) }
+        updateDspConfig(snapshot)
+        Toast.makeText(app, "Saved EQ preset \"$cleanName\"", Toast.LENGTH_SHORT).show()
+        return true
+    }
+
+    fun deleteCustomPreset(name: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.deleteCustomPreset(name)
+        }
+        _customPresets.update { it - name }
+        val current = _dspConfig.value
+        if (current.eqPreset == name) {
+            updateDspConfig(current.copy(eqPreset = "Custom"))
+        }
+        Toast.makeText(app, "Deleted \"$name\"", Toast.LENGTH_SHORT).show()
+    }
+
     fun getProfileConfig(profile: AudioProfile, mode: SpatialMode = _dspConfig.value.spatialMode): AudioDspConfig {
-        val targetMode = if (mode == SpatialMode.OFF) SpatialMode.MODE_8D else mode
-        val key = "dsp_config_${targetMode.name}_${profile.name}"
+        val key = "dsp_config_${mode.name}_${profile.name}"
         val savedJson = prefs.getString(key, null)
         if (savedJson != null) {
             val parsed = AudioDspConfig.fromJson(savedJson)
             if (parsed != null) return parsed
         }
-        return AudioDspConfig.createConfig(targetMode, profile)
+        return AudioDspConfig.createConfig(mode, profile)
     }
 
     fun updateDspConfig(newConfig: AudioDspConfig) {
         _dspConfig.value = newConfig
+        if (_uiState.value.selectedEqPreset != newConfig.eqPreset) {
+            _uiState.update { it.copy(selectedEqPreset = newConfig.eqPreset) }
+        }
         playerEngine.applyDspConfig(newConfig)
         prefs.edit().putString("last_dsp_config", newConfig.toJson()).apply()
-        if (newConfig.spatialMode != SpatialMode.OFF) {
-            val key = "dsp_config_${newConfig.spatialMode.name}_${newConfig.activeProfile.name}"
-            prefs.edit().putString(key, newConfig.toJson()).apply()
-        }
+        val key = "dsp_config_${newConfig.spatialMode.name}_${newConfig.activeProfile.name}"
+        prefs.edit().putString(key, newConfig.toJson()).apply()
         if (newConfig.perTrackMemoryEnabled) {
             val trackId = _uiState.value.currentTrack.id
             if (trackId.isNotEmpty()) {
@@ -1537,6 +1837,26 @@ class PlaybackViewModel : ViewModel() {
                 }
             }
         }
+    }
+
+    private fun mergeEqAndGlobalState(baseConfig: AudioDspConfig, current: AudioDspConfig): AudioDspConfig {
+        val isSlowed = current.eqPreset == "Slowed + Reverbed"
+        return baseConfig.copy(
+            masterEnabled = current.masterEnabled,
+            abBypass = current.abBypass,
+            safeMode = current.safeMode,
+            eqEnabled = current.eqEnabled,
+            eqPreset = current.eqPreset,
+            eqBands = current.eqBands,
+            eqPreampDb = current.eqPreampDb,
+            autoHeadroomEnabled = current.autoHeadroomEnabled,
+            playbackSpeed = current.playbackSpeed,
+            pitchSemitones = current.pitchSemitones,
+            lockPitchWithSpeed = current.lockPitchWithSpeed,
+            perTrackMemoryEnabled = current.perTrackMemoryEnabled,
+            reverbLevel = if (isSlowed) maxOf(baseConfig.reverbLevel, 0.42f) else baseConfig.reverbLevel,
+            roomSize = if (isSlowed) maxOf(baseConfig.roomSize, 0.74f) else baseConfig.roomSize
+        )
     }
 
     fun cycleSpatialMode() {
@@ -1550,53 +1870,49 @@ class PlaybackViewModel : ViewModel() {
 
     fun setSpatialMode(mode: SpatialMode) {
         val current = _dspConfig.value
-        val currentProfile = current.activeProfile
-        val baseConfig = if (mode == SpatialMode.OFF) {
-            AudioDspConfig.createConfig(mode, currentProfile)
-        } else {
-            getProfileConfig(currentProfile, mode)
-        }
-        val newConfig = baseConfig.copy(
-            eqEnabled = current.eqEnabled,
-            eqPreset = current.eqPreset,
-            eqBands = current.eqBands,
-            playbackSpeed = current.playbackSpeed,
-            pitchSemitones = current.pitchSemitones
-        )
-        updateDspConfig(newConfig)
+        val baseConfig = getProfileConfig(current.activeProfile, mode)
+        updateDspConfig(mergeEqAndGlobalState(baseConfig, current))
     }
 
     fun selectProfile(profile: AudioProfile) {
         val current = _dspConfig.value
-        val currentMode = current.spatialMode
-        val baseConfig = getProfileConfig(profile, currentMode)
-        val newConfig = baseConfig.copy(
-            eqEnabled = current.eqEnabled,
-            eqPreset = current.eqPreset,
-            eqBands = current.eqBands,
-            playbackSpeed = current.playbackSpeed,
-            pitchSemitones = current.pitchSemitones
-        )
-        updateDspConfig(newConfig)
+        val baseConfig = getProfileConfig(profile, current.spatialMode)
+        updateDspConfig(mergeEqAndGlobalState(baseConfig, current))
     }
 
     fun resetProfile(profile: AudioProfile, mode: SpatialMode = _dspConfig.value.spatialMode) {
-        val targetMode = if (mode == SpatialMode.OFF) SpatialMode.MODE_8D else mode
-        val defaultConfig = AudioDspConfig.createConfig(targetMode, profile)
+        val defaultConfig = AudioDspConfig.createConfig(mode, profile)
         prefs.edit()
-            .remove("dsp_config_${targetMode.name}_${profile.name}")
+            .remove("dsp_config_${mode.name}_${profile.name}")
             .apply()
-
-        val toApply = if (_dspConfig.value.spatialMode == SpatialMode.OFF) {
-            defaultConfig.copy(spatialMode = SpatialMode.OFF, is8dEnabled = false)
+        val current = _dspConfig.value
+        if (profile == current.activeProfile && mode == current.spatialMode) {
+            updateDspConfig(mergeEqAndGlobalState(defaultConfig, current))
         } else {
-            defaultConfig
+            updateDspConfig(defaultConfig)
         }
-        updateDspConfig(toApply)
     }
 
     fun resetCurrentProfile() {
         resetProfile(_dspConfig.value.activeProfile, _dspConfig.value.spatialMode)
+    }
+
+    fun resetEqualizerAndTone() {
+        val current = _dspConfig.value
+        val profileDefaults = AudioDspConfig.createConfig(current.spatialMode, current.activeProfile)
+        updateDspConfig(
+            profileDefaults.copy(
+                masterEnabled = current.masterEnabled,
+                abBypass = false,
+                safeMode = current.safeMode,
+                perTrackMemoryEnabled = current.perTrackMemoryEnabled,
+                eqEnabled = false,
+                eqPreset = "Flat",
+                eqBands = listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f),
+                eqPreampDb = 0.0f,
+                autoHeadroomEnabled = true
+            )
+        )
     }
 
     fun openProfileSelectorSheet() {
@@ -1646,6 +1962,37 @@ class PlaybackViewModel : ViewModel() {
     fun selectEqPreset(presetName: String) {
         _uiState.update { it.copy(selectedEqPreset = presetName) }
         val current = _dspConfig.value
+        val profileDefaults = AudioDspConfig.createConfig(current.spatialMode, current.activeProfile)
+        val wasFxPreset = current.eqPreset == "Nightcore" || current.eqPreset == "Slowed + Reverbed"
+
+        // Check user custom presets first
+        val customPreset = _customPresets.value[presetName]
+        if (customPreset != null) {
+            updateDspConfig(
+                current.copy(
+                    eqEnabled = true,
+                    eqPreset = presetName,
+                    eqBands = customPreset.eqBands,
+                    eqPreampDb = customPreset.eqPreampDb,
+                    autoHeadroomEnabled = customPreset.autoHeadroomEnabled,
+                    bassBoostEnabled = customPreset.bassBoostEnabled,
+                    bassBoostFreq = customPreset.bassBoostFreq,
+                    bassBoostGainDb = customPreset.bassBoostGainDb,
+                    trebleClarityDb = customPreset.trebleClarityDb,
+                    vocalPresenceDb = customPreset.vocalPresenceDb,
+                    microDetailLevel = customPreset.microDetailLevel,
+                    stereoWidth = customPreset.stereoWidth,
+                    crossfeed = customPreset.crossfeed,
+                    crossfeedAmount = customPreset.crossfeedAmount,
+                    playbackSpeed = if (wasFxPreset) 1.0f else current.playbackSpeed,
+                    pitchSemitones = if (wasFxPreset) 0.0f else current.pitchSemitones,
+                    reverbLevel = if (wasFxPreset) profileDefaults.reverbLevel else current.reverbLevel,
+                    roomSize = if (wasFxPreset) profileDefaults.roomSize else current.roomSize
+                )
+            )
+            return
+        }
+
         val presetBands = EqPresets.PRESETS[presetName] ?: floatArrayOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)
         val bandList = presetBands.toList()
 
@@ -1656,14 +2003,19 @@ class PlaybackViewModel : ViewModel() {
                         eqEnabled = false,
                         eqPreset = "Flat",
                         eqBands = bandList,
+                        eqPreampDb = 0.0f,
                         playbackSpeed = 1.0f,
                         pitchSemitones = 0.0f,
-                        reverbLevel = if (current.is8dEnabled) current.reverbLevel else 0.0f
+                        reverbLevel = if (wasFxPreset) profileDefaults.reverbLevel else current.reverbLevel,
+                        roomSize = if (wasFxPreset) profileDefaults.roomSize else current.roomSize,
+                        bassBoostGainDb = if (wasFxPreset) profileDefaults.bassBoostGainDb else current.bassBoostGainDb,
+                        bassBoostFreq = if (wasFxPreset) profileDefaults.bassBoostFreq else current.bassBoostFreq,
+                        bassBoostEnabled = if (wasFxPreset) profileDefaults.bassBoostEnabled else current.bassBoostEnabled,
+                        trebleClarityDb = if (wasFxPreset) profileDefaults.trebleClarityDb else current.trebleClarityDb
                     )
                 )
             }
             "Nightcore" -> {
-                // Nightcore EQ profile: accelerated tempo, crisp pitch shift, bright clarity, zero panning
                 updateDspConfig(
                     current.copy(
                         eqEnabled = true,
@@ -1671,18 +2023,13 @@ class PlaybackViewModel : ViewModel() {
                         eqBands = bandList,
                         playbackSpeed = 1.25f,
                         pitchSemitones = 3.5f,
-                        trebleClarityDb = 1.5f,
-                        preGainDb = -2.0f,
+                        trebleClarityDb = maxOf(current.trebleClarityDb, 1.5f),
                         roomSize = 0.40f,
-                        reverbLevel = 0.10f,
-                        is8dEnabled = false,
-                        spatialMode = SpatialMode.OFF,
-                        panDepth = 0.0f
+                        reverbLevel = maxOf(current.reverbLevel, 0.10f)
                     )
                 )
             }
             "Slowed + Reverbed" -> {
-                // Slowed + Reverbed EQ profile: relaxed tempo, dropped pitch, sub-bass, spacious reverb, zero panning
                 updateDspConfig(
                     current.copy(
                         eqEnabled = true,
@@ -1694,29 +2041,24 @@ class PlaybackViewModel : ViewModel() {
                         reverbLevel = 0.42f,
                         bassBoostEnabled = true,
                         bassBoostFreq = BassBoostFrequency.FREQ_60HZ,
-                        bassBoostGainDb = 2.5f,
-                        trebleClarityDb = 0.5f,
-                        preGainDb = -3.0f,
-                        is8dEnabled = false,
-                        spatialMode = SpatialMode.OFF,
-                        panDepth = 0.0f
+                        bassBoostGainDb = maxOf(current.bassBoostGainDb, 2.5f)
                     )
                 )
             }
             else -> {
-                // Presets from EQ-Clone: Bass, Treble, Vocal, Pop, Rock, Jazz, Classic
-                val resetSpeed = if (current.eqPreset == "Nightcore" || current.eqPreset == "Slowed + Reverbed") 1.0f else current.playbackSpeed
-                val resetPitch = if (current.eqPreset == "Nightcore" || current.eqPreset == "Slowed + Reverbed") 0.0f else current.pitchSemitones
-                val resetReverb = if (!current.is8dEnabled && (current.eqPreset == "Nightcore" || current.eqPreset == "Slowed + Reverbed")) 0.0f else current.reverbLevel
-
                 updateDspConfig(
                     current.copy(
                         eqEnabled = true,
                         eqPreset = presetName,
                         eqBands = bandList,
-                        playbackSpeed = resetSpeed,
-                        pitchSemitones = resetPitch,
-                        reverbLevel = resetReverb
+                        playbackSpeed = if (wasFxPreset) 1.0f else current.playbackSpeed,
+                        pitchSemitones = if (wasFxPreset) 0.0f else current.pitchSemitones,
+                        reverbLevel = if (wasFxPreset) profileDefaults.reverbLevel else current.reverbLevel,
+                        roomSize = if (wasFxPreset) profileDefaults.roomSize else current.roomSize,
+                        bassBoostGainDb = if (wasFxPreset) profileDefaults.bassBoostGainDb else current.bassBoostGainDb,
+                        bassBoostFreq = if (wasFxPreset) profileDefaults.bassBoostFreq else current.bassBoostFreq,
+                        bassBoostEnabled = if (wasFxPreset) profileDefaults.bassBoostEnabled else current.bassBoostEnabled,
+                        trebleClarityDb = if (wasFxPreset) profileDefaults.trebleClarityDb else current.trebleClarityDb
                     )
                 )
             }
@@ -1727,7 +2069,8 @@ class PlaybackViewModel : ViewModel() {
         val current = _dspConfig.value
         val bands = current.eqBands.toMutableList()
         if (bandIndex in 0 until bands.size) {
-            bands[bandIndex] = gainDb.coerceIn(-12f, 12f)
+            val snapped = (kotlin.math.round(gainDb.coerceIn(-12f, 12f) * 2f) / 2f)
+            bands[bandIndex] = snapped
             _uiState.update { it.copy(selectedEqPreset = "Custom") }
             updateDspConfig(
                 current.copy(
@@ -2174,6 +2517,40 @@ class PlaybackViewModel : ViewModel() {
             database.clearAllDownloads(app)
             refreshDownloads()
             _uiState.update { it.copy(isDownloaded = false) }
+        }
+    }
+
+    private fun repairSavedSongsWithMissingArtists() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val broken = database.getSongsWithMissingArtist(limit = 25)
+            if (broken.isEmpty()) return@launch
+            var repairedAny = false
+            for (song in broken) {
+                if (!isActive) break
+                try {
+                    val details = innerTube.getSongDetails(song.videoId) ?: continue
+                    if (!InnerTubeClient.isMissingArtist(details.artists)) {
+                        val merged = song.copy(
+                            title = song.title.ifBlank { details.title },
+                            artists = details.artists,
+                            album = song.album ?: details.album,
+                            duration = song.duration ?: details.duration,
+                            durationSeconds = if (song.durationSeconds > 0) song.durationSeconds else details.durationSeconds,
+                            thumbnailUrl = song.thumbnailUrl?.ifBlank { null } ?: details.thumbnailUrl
+                        )
+                        database.updateSongMetadata(merged)
+                        repairedAny = true
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {}
+            }
+            if (repairedAny) {
+                refreshLibrary()
+                refreshDownloads()
+                loadSearchHistory()
+                refreshUsageMetrics()
+            }
         }
     }
 

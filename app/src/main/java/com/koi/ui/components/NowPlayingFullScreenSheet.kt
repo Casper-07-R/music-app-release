@@ -107,7 +107,7 @@ fun NowPlayingFullScreenSheet(
     val effectivePositionMs = (currentPositionMs + userOffsetMs + BASE_LEAD_IN_MS).coerceAtLeast(0L)
     val activeLyricIndex = remember(effectivePositionMs, track.syncedLyrics) {
         if (track.syncedLyrics.isNotEmpty()) {
-            track.syncedLyrics.indexOfLast { (it.timeMs ?: 0L) <= effectivePositionMs }
+            track.syncedLyrics.indexOfLast { it.timeMs != null && it.timeMs <= effectivePositionMs }
         } else {
             -1
         }
@@ -605,6 +605,9 @@ fun NowPlayingFullScreenSheet(
                         val displayProfileTag = when (activeProfileName.trim().lowercase()) {
                             "surround 360°", "surround 360", "360°" -> "360°"
                             "balanced" -> "Balanced"
+                            "immersion" -> "Immersion"
+                            "crystal hearing" -> "Clarity"
+                            "midnight" -> "Midnight"
                             else -> activeProfileName.trim()
                         }
 
@@ -797,7 +800,7 @@ fun NowPlayingFullScreenSheet(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = if (track.syncedLyrics.isNotEmpty() || track.lyrics.isNotEmpty()) "Lyrics (Live)" else "Lyrics",
+                                    text = if (track.syncedLyrics.isNotEmpty()) "Lyrics (Live)" else "Lyrics",
                                     fontSize = 13.5.sp,
                                     fontFamily = CircularFontFamily,
                                     fontWeight = FontWeight.Bold,
@@ -837,7 +840,7 @@ fun NowPlayingFullScreenSheet(
                             }
                         }
                     }
-                } else if (isPlaying || isBuffering) {
+                } else if (isPlaying || isBuffering || isFindingLyrics) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
