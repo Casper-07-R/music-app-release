@@ -583,6 +583,17 @@ class KoiDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, n
         return exists
     }
 
+    fun getLikedVideoIds(): Set<String> {
+        val db = readableDatabase
+        val ids = HashSet<String>()
+        val cursor = db.rawQuery("SELECT video_id FROM liked_songs", null)
+        while (cursor.moveToNext()) {
+            ids.add(cursor.getString(0))
+        }
+        cursor.close()
+        return ids
+    }
+
     fun getLikedSongs(): List<SongItem> {
         val db = readableDatabase
         val list = mutableListOf<SongItem>()

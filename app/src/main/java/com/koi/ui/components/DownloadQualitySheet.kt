@@ -469,7 +469,7 @@ fun DownloadQualitySheet(
 }
 
 private fun formatDuration(seconds: Int): String {
-    if (seconds <= 0) return "3:30"
+    if (seconds <= 0) return "--:--"
     val mins = seconds / 60
     val secs = seconds % 60
     return String.format("%d:%02d", mins, secs)

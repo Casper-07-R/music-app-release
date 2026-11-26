@@ -11,8 +11,8 @@ object UserProfileManager {
     const val PREFS_NAME = "koi_user_profile"
     const val KEY_USERNAME = "profile_username"
     const val KEY_HAS_PROMPTED = "has_prompted_initial_username"
-    const val KEY_HAS_COMPLETED_TUTORIAL = "has_completed_onboarding_tutorial_v1_2_2"
-    const val DEFAULT_USERNAME = "Casper"
+    const val KEY_HAS_COMPLETED_TUTORIAL = "has_completed_onboarding_tutorial_v1_3_0"
+    const val DEFAULT_USERNAME = "Listener"
 
     /**
      * Determines whether the app should prompt for username on first open.

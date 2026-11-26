@@ -499,7 +499,11 @@ fun KoiApp(
                             onImportQrImageUri = { uri ->
                                 viewModel.importPlaylistFromImageUri(uri)
                             },
-                            onProfileClick = { viewModel.selectTab(NavigationTab.PROFILE) }
+                            onProfileClick = { viewModel.selectTab(NavigationTab.PROFILE) },
+                            onTargetPositioned = { target, rect ->
+                                tutorialTargetBounds = tutorialTargetBounds + (target to rect)
+                            },
+                            tutorialStep = if (uiState.showOnboardingTutorial) uiState.onboardingTutorialStep else null
                         )
                     }
                     NavigationTab.PROFILE -> {
@@ -511,7 +515,11 @@ fun KoiApp(
                             onClearCacheClick = { viewModel.clearCache() },
                             onRefreshMetricsClick = { viewModel.refreshUsageMetrics() },
                             onSetSleepTimer = { viewModel.setSleepTimer(it) },
-                            onUpdateUsername = { viewModel.updateUsername(it) }
+                            onUpdateUsername = { viewModel.updateUsername(it) },
+                            onTargetPositioned = { target, rect ->
+                                tutorialTargetBounds = tutorialTargetBounds + (target to rect)
+                            },
+                            tutorialStep = if (uiState.showOnboardingTutorial) uiState.onboardingTutorialStep else null
                         )
                     }
                 }
@@ -708,7 +716,6 @@ fun KoiApp(
                     TextField(
                         value = playlistName,
                         onValueChange = { playlistName = it },
-                        placeholder = { Text("My playlist #1", color = SpotifyTextSecondary) },
                         singleLine = true,
                         colors = TextFieldDefaults.colors(
                             focusedTextColor = SpotifyTextPrimary,
@@ -822,7 +829,6 @@ fun KoiApp(
                             TextField(
                                 value = newPlaylistName,
                                 onValueChange = { newPlaylistName = it },
-                                placeholder = { Text("My playlist #1", color = SpotifyTextSecondary) },
                                 singleLine = true,
                                 colors = TextFieldDefaults.colors(
                                     focusedTextColor = SpotifyTextPrimary,
@@ -1187,8 +1193,23 @@ fun KoiApp(
 
         // Step-by-Step Game Mechanics Spotlight Walkthrough Tutorial
         // Darkens the app and spotlights key features on first install or when replayed.
-        // Yields when user is interacting with modal sheets (such as SleepTimerSheet or Settings) so the user can interact cleanly!
-        if (uiState.showOnboardingTutorial && !uiState.showInitialUsernameDialog && !uiState.showSleepTimerDialog && !uiState.showSettingsScreen && !uiState.showStreamingQualitySheet) {
+        // Yields whenever a sheet, dialog, detail page, or full-screen player is active so the user can test features freely.
+        if (
+            uiState.showOnboardingTutorial &&
+            !uiState.showInitialUsernameDialog &&
+            !uiState.showSleepTimerDialog &&
+            !uiState.showSettingsScreen &&
+            !uiState.showStreamingQualitySheet &&
+            !uiState.showEqualizerSheet &&
+            !uiState.showEightDStudioSheet &&
+            !uiState.showProfileSelectorSheet &&
+            !uiState.showQrScanner &&
+            uiState.playlistToShareQr == null &&
+            !uiState.isFullScreenPlayerExpanded &&
+            uiState.selectedPlaylist == null &&
+            !uiState.showDownloadManager &&
+            !uiState.showCreatePlaylistDialog
+        ) {
             GameMechanicsTutorialOverlay(
                 currentStep = uiState.onboardingTutorialStep,
                 username = uiState.username,

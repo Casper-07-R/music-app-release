@@ -201,34 +201,33 @@ class AppUpdateManager(
     fun previewUpdate() {
         isPreviewMode = true
         val release = GitHubRelease(
-            id = 202,
-            tagName = "v1.2.2",
-            name = "Koi v1.2.2 - Onboarding Tutorial & Audio Quality",
+            id = 300,
+            tagName = "v1.3.0",
+            name = "Koi v1.3.0 - Koi Art QR Sharing, EQ & Analytics",
             body = """
                 ### Added Features
-                * Immediate First-Run Game Mechanics Tutorial
-                * Adaptive Audio Quality & Zero-Buffering Streaming
-                * 10-Band Equalizer & 360° Spatial Sound
-                * Swipe to Dismiss Mini-Player
+                * Playlist QR Sharing: Share playlists as full-color Koi artwork QR cards with live camera scanner & image import
+                * Live Spectrum & 10-Band EQ: Home deck FFT visualizer, custom EQ presets, A/B bypass & 5 redesigned DSP profiles
+                * Listening Analytics: 7-day activity chart, top songs, favorite genres, top playlists & storage insights in Profile
                 
-                ### Stability
-                * Guaranteed tutorial launch on first open after installing
+                ### Fixes & Improvements
+                * Synced Lyrics & Search: Official timed lyrics matching, language/variant filtering, featured playlist search & metadata auto-repair
             """.trimIndent(),
-            publishedAt = "2026-11-15T08:30:00Z",
-            htmlUrl = "https://github.com/Casper-07-R/music-app-release/releases/tag/v1.2.2",
+            publishedAt = "2026-11-26T18:30:00Z",
+            htmlUrl = "https://github.com/Casper-07-R/music-app-release/releases/tag/v1.3.0",
             assets = listOf(
                 GitHubAsset(
-                    id = 1000,
-                    name = "Koi-v1.2.2.apk",
-                    size = 18_800_000L,
+                    id = 1100,
+                    name = "Koi-v1.3.0.apk",
+                    size = 22_000_000L,
                     contentType = "application/vnd.android.package-archive",
-                    browserDownloadUrl = "https://github.com/Casper-07-R/music-app-release/releases/download/v1.2.2/Koi-v1.2.2.apk"
+                    browserDownloadUrl = "https://github.com/Casper-07-R/music-app-release/releases/download/v1.3.0/Koi-v1.3.0.apk"
                 )
             )
         )
         val apkAsset = release.assets.first()
         _state.value = UpdateUiState.UpdateAvailable(
-            currentVersion = "1.2.1",
+            currentVersion = "1.2.2",
             release = release,
             apkAsset = apkAsset
         )

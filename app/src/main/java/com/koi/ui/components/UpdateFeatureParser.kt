@@ -164,7 +164,7 @@ object UpdateFeatureParser {
             description = description,
             tip = tip,
             tag = tag,
-            highlightMetrics = if (type == UpdateFeatureType.PERFORMANCE) "10x Faster" else null
+            highlightMetrics = null
         )
     }
 

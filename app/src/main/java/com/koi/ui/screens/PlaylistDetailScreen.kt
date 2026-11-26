@@ -189,18 +189,17 @@ fun PlaylistDetailScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(3.dp))
-
                     // Description
-                    Text(
-                        text = playlist.description.ifEmpty {
-                            if (playlist.isAlbum) "Album by ${playlist.creator}" else "Collection by ${playlist.creator}"
-                        },
-                        fontSize = 12.5.sp,
-                        fontFamily = CircularFontFamily,
-                        fontWeight = FontWeight.Normal,
-                        color = RogTextSecondary
-                    )
+                    if (playlist.description.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = playlist.description,
+                            fontSize = 12.5.sp,
+                            fontFamily = CircularFontFamily,
+                            fontWeight = FontWeight.Normal,
+                            color = RogTextSecondary
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(6.dp))
 

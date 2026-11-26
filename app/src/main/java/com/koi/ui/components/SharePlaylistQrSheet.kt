@@ -13,7 +13,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -52,22 +51,35 @@ fun SharePlaylistQrSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var selectedTheme by remember { mutableStateOf(KoiQrTheme.KOI_POND) }
-    var generationResult by remember(playlist.id, playlist.tracks, selectedTheme) {
-        mutableStateOf<QrGenerationResult?>(null)
+    val songItems = remember(playlist.id, playlist.tracks) {
+        playlist.tracks.map { it.toSongItem() }
     }
+    var cachedPayload by remember(playlist.id, playlist.tracks) {
+        mutableStateOf<com.koi.backend.share.PlaylistShareCodec.EncodedPlaylistPayload?>(null)
+    }
+    val cachedResults = remember(playlist.id, playlist.tracks) {
+        mutableStateMapOf<KoiQrTheme, QrGenerationResult>()
+    }
+    val generationResult = cachedResults[selectedTheme]
     var isSharing by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
 
     LaunchedEffect(playlist.id, playlist.tracks, selectedTheme) {
-        generationResult = null
-        generationResult = QrCodeHelper.generatePlaylistQr(
-            playlistTitle = playlist.title,
-            playlistDescription = playlist.description,
-            coverUrl = playlist.thumbnailUrl,
-            songs = playlist.tracks.map { it.toSongItem() },
-            theme = selectedTheme,
-            context = context
-        )
+        if (cachedResults[selectedTheme] == null) {
+            val result = QrCodeHelper.generatePlaylistQr(
+                playlistTitle = playlist.title,
+                playlistDescription = playlist.description,
+                coverUrl = playlist.thumbnailUrl,
+                songs = songItems,
+                theme = selectedTheme,
+                context = context,
+                preEncodedPayload = cachedPayload
+            )
+            if (result is QrGenerationResult.Success) {
+                cachedPayload = result.payload
+            }
+            cachedResults[selectedTheme] = result
+        }
     }
 
     ModalBottomSheet(
@@ -153,7 +165,7 @@ fun SharePlaylistQrSheet(
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = "Crafting Koi QR v40...",
+                                text = "Generating QR...",
                                 fontSize = 12.5.sp,
                                 fontFamily = CircularFontFamily,
                                 color = RogTextSecondary
@@ -179,7 +191,7 @@ fun SharePlaylistQrSheet(
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = "Playlist exceeds QR Version 40 capacity",
+                            text = "Playlist is too large for one QR",
                             fontSize = 15.5.sp,
                             fontFamily = CircularFontFamily,
                             fontWeight = FontWeight.Bold,
@@ -188,7 +200,7 @@ fun SharePlaylistQrSheet(
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "All ${result.songCount} songs compressed to ${result.encodedChars} chars, while a single Version 40 QR holds up to ${result.maxChars} chars. Try splitting this playlist into smaller collections.",
+                            text = "This playlist (${result.songCount} songs) exceeds single-QR capacity. Split it into smaller playlists to share.",
                             fontSize = 12.5.sp,
                             fontFamily = CircularFontFamily,
                             color = RogTextSecondary,
@@ -237,9 +249,9 @@ fun SharePlaylistQrSheet(
                     ) {
                         Image(
                             bitmap = result.shareCardBitmap.asImageBitmap(),
-                            contentDescription = "Koi Playlist QR Card Version 40",
+                            contentDescription = "Koi Playlist QR Card",
                             contentScale = ContentScale.Fit,
-                            filterQuality = FilterQuality.High,
+                            filterQuality = FilterQuality.Medium,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -289,36 +301,6 @@ fun SharePlaylistQrSheet(
                                 )
                             }
                         }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Compact Compression & Version 40 Badge
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(RogSurfaceSubtle)
-                            .border(1.dp, RogDivider, RoundedCornerShape(12.dp))
-                            .padding(horizontal = 12.dp, vertical = 9.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.QrCode2,
-                            contentDescription = null,
-                            tint = Color(result.theme.accentPrimary),
-                            modifier = Modifier.size(17.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "QR v40 (EC-${result.errorCorrectionLevel.name}) • ${result.payload.compressionMethod}: ${result.payload.jsonBytesCount} B → ${result.payload.compressedBytesCount} B (${result.payload.savedPercent}% saved)",
-                            fontSize = 11.5.sp,
-                            fontFamily = CircularFontFamily,
-                            fontWeight = FontWeight.Medium,
-                            color = RogTextSecondary,
-                            textAlign = TextAlign.Center
-                        )
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))

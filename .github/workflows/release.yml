@@ -26,17 +26,16 @@ jobs:
           body: |
             ## Koi ${{ github.ref_name }} 🎏
 
-            ### 📶 Adaptive Audio Quality & Zero-Buffering Streaming
-            * **Multi-Tier Audio Fallback**: Comprehensive audio format ladder with seamless degradation across High (Opus 160k / AAC 128k), Medium (Opus 70k), Low (Opus 50k), and Very Low / Data Saver (AAC 48k).
-            * **Real-time Network Coverage Monitor**: Dynamically tracks link bandwidth, cellular generation (2G, 3G, 4G, 5G), and Wi-Fi signal to adapt playback bitrates before buffering occurs.
-            * **Dynamic Stall Watchdog**: Automatically transitions to lower bitrate streams if buffering persists (>2.5s) or recurs, eliminating audio tearing on weak or unstable signals.
-            * **Custom Streaming Preferences**: Interactive ROG-styled Streaming Quality sheet in Settings to select Auto, High, Medium, Low, or Data Saver modes.
+            ### 🎨 Koi Pond Playlist QR Sharing & Scanner
+            * **Koi Pond QR Cards**: Share any playlist or Liked Songs as full-color Koi Pond art QR cards across Koi Pond, Kohaku Gold, and Lotus Cyan themes with gallery save and share sheet export.
+            * **Live Camera Scanner & Import**: Scan playlist QR cards with the in-app CameraX scanner, import images from your gallery or WhatsApp, or open `koi://` links directly.
 
-            ### 🎮 Interactive Game Mechanics Onboarding Tutorial
-            * **Guaranteed First-Run Walkthrough**: The interactive tutorial now plays automatically the very first time the app is opened after installing.
-            * **Cinematic Spotlight Walkthrough**: Complete HUD quest-driven walkthrough introducing 360° audio & 10-band EQ, sound stations, private vault, adaptive streaming quality, and gentle bedtime timers.
-            * **Replay Support**: Replay the onboarding tutorial anytime from Settings -> Replay Game Mechanics Tutorial.
+            ### 🎚️ Audio Studio, 10-Band EQ & 5 DSP Profiles
+            * **Live 10-Band FFT & Equalizer**: Real-time 10-band spectrum visualizer on Home with custom saveable EQ presets, Pre-Amp with Headroom Guard, A/B RAW bypass, and Stage depth controls.
+            * **5 Redesigned DSP Profiles**: Upgraded Acoustic Profiles with live visual meters and smooth parameter ramping across Stereo, 8D, and 16D modes.
 
-            ### 🖐️ Gesture & Stability Refinements
-            * **Swipe-to-Dismiss Mini-Player**: Swipe the floating Now Playing bar horizontally left or right to dismiss it cleanly.
-            * **Crash Prevention**: Resolved startup initialization order race condition in PlayerEngine.
+            ### 📝 Official Timed Lyrics & Playback Fixes
+            * **Timed Sync & Metadata Repair**: Official Android Music timed `cueRange` synced lyrics with strict variant and script matching, featured/community playlist search, instant loading states, and auto-repaired artist and duration metadata.
+
+            ### 📊 Live Profile Listening Analytics
+            * **Listening Insights & Storage**: Live 7-day activity chart, favorite genres, most played songs, top playlists and artists, lifetime listening timer, and storage/memory monitors.

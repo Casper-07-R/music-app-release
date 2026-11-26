@@ -302,4 +302,88 @@ class PlaylistShareCodecTest {
             )
         }
     }
+
+    @Test
+    fun testFastVersion40Encoding_matchesZxingWriterBitForBitAcrossMasksAndEcLevels() {
+        val writer = com.google.zxing.qrcode.QRCodeWriter()
+        val payloads = listOf(
+            PlaylistShareCodec.encodePlaylist("Tiny", null, null, sampleSongs(3)),     // EC-H
+            PlaylistShareCodec.encodePlaylist("Medium", null, null, sampleSongs(45)),  // EC-Q / M
+            PlaylistShareCodec.encodePlaylist("Large", null, null, sampleSongs(130))   // EC-L or M
+        )
+        val gridSize = 185
+        val lumGrid = FloatArray(gridSize * gridSize) { idx ->
+            ((idx * 37) % 256).toFloat()
+        }
+
+        for (payload in payloads) {
+            val fastRes = QrCodeHelper.encodeVersion40BitMatrix(payload.uri, lumGrid, gridSize)
+            val baseHints = mapOf(
+                com.google.zxing.EncodeHintType.QR_VERSION to QrCodeHelper.QR_VERSION,
+                com.google.zxing.EncodeHintType.ERROR_CORRECTION to fastRes.errorCorrectionLevel,
+                com.google.zxing.EncodeHintType.MARGIN to 4
+            )
+            var expectedBestMatrix: com.google.zxing.common.BitMatrix? = null
+            var bestScore = Double.NEGATIVE_INFINITY
+            for (maskId in 0..7) {
+                val candidate = writer.encode(
+                    payload.uri,
+                    com.google.zxing.BarcodeFormat.QR_CODE,
+                    0,
+                    0,
+                    baseHints + (com.google.zxing.EncodeHintType.QR_MASK_PATTERN to maskId)
+                )
+                var score = 0.0
+                for (my in 4 until (gridSize - 4)) {
+                    val rowOff = my * gridSize
+                    for (mx in 4 until (gridSize - 4)) {
+                        val delta = 140.0 - lumGrid[rowOff + mx]
+                        score += if (candidate.get(mx, my)) delta else -delta
+                    }
+                }
+                if (score > bestScore) {
+                    bestScore = score
+                    expectedBestMatrix = candidate
+                }
+            }
+            assertEquals(expectedBestMatrix, fastRes.bitMatrix)
+        }
+    }
+
+    @Test
+    fun testRingBufferHighFrequencyDetail_matchesReferenceSeparableBlur() {
+        val size = 185 * 8
+        val artPixels = IntArray(size * size) { i ->
+            val r = (i * 53) and 0xFF
+            val g = (i * 97 + 31) and 0xFF
+            val b = (i * 193 + 71) and 0xFF
+            (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+        }
+        val fastDetail = QrCodeHelper.computeHighFrequencyDetail(artPixels, size)
+
+        val lums = FloatArray(size * size) { i ->
+            val argb = artPixels[i]
+            0.299f * ((argb ushr 16) and 0xFF) +
+                0.587f * ((argb ushr 8) and 0xFF) +
+                0.114f * (argb and 0xFF)
+        }
+        val horiz = FloatArray(size * size)
+        for (y in 0 until size) {
+            val rowOff = y * size
+            for (x in 0 until size) {
+                var sum = 0f
+                for (dx in -3..3) sum += lums[rowOff + (x + dx).coerceIn(0, size - 1)]
+                horiz[rowOff + x] = sum / 7f
+            }
+        }
+        for (y in 0 until size) {
+            val rowOff = y * size
+            for (x in 0 until size) {
+                var sum = 0f
+                for (dy in -3..3) sum += horiz[(y + dy).coerceIn(0, size - 1) * size + x]
+                val expected = lums[rowOff + x] - (sum / 7f)
+                assertEquals("Mismatch at ($x, $y)", expected, fastDetail[rowOff + x], 0.05f)
+            }
+        }
+    }
 }

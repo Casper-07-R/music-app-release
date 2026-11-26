@@ -74,14 +74,8 @@ fun HomeScreen(
 
     // Smoothly scroll to the target feature when the active tutorial step changes
     LaunchedEffect(tutorialStep) {
-        if (tutorialStep != null) {
-            when (tutorialStep) {
-                0 -> listState.animateScrollToItem(0) // Top (Spatial Deck)
-                1 -> listState.animateScrollToItem(2) // Sound Stations
-                2 -> listState.animateScrollToItem(3) // Vault
-                3 -> listState.animateScrollToItem(0) // Top (Settings & Streaming Quality)
-                4 -> listState.animateScrollToItem(0) // Top (Sleep Timer Header)
-            }
+        if (tutorialStep == 0 || tutorialStep == 1) {
+            listState.animateScrollToItem(0)
         }
     }
 
@@ -147,7 +141,6 @@ fun HomeScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(12.dp))
-                                    .onGloballyPositioned { coords -> onTargetPositioned(TutorialTarget.SLEEP_TIMER, coords.boundsInRoot()) }
                                     .clickable { onOpenSleepTimer() }
                                     .padding(horizontal = 8.dp, vertical = 4.dp),
                                 contentAlignment = Alignment.Center
@@ -174,7 +167,6 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .size(34.dp)
                                     .clip(CircleShape)
-                                    .onGloballyPositioned { coords -> onTargetPositioned(TutorialTarget.SLEEP_TIMER, coords.boundsInRoot()) }
                                     .clickable { onOpenSleepTimer() },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -209,7 +201,6 @@ fun HomeScreen(
                             modifier = Modifier
                                 .size(34.dp)
                                 .clip(CircleShape)
-                                .onGloballyPositioned { coords -> onTargetPositioned(TutorialTarget.SETTINGS, coords.boundsInRoot()) }
                                 .clickable { onSettingsClick() },
                             contentAlignment = Alignment.Center
                         ) {
@@ -231,7 +222,7 @@ fun HomeScreen(
                 modifier = Modifier
                     .padding(horizontal = 20.dp, vertical = 6.dp)
                     .fillMaxWidth()
-                    .onGloballyPositioned { coords -> onTargetPositioned(TutorialTarget.SPATIAL_DECK, coords.boundsInRoot()) }
+                    .onGloballyPositioned { coords -> onTargetPositioned(TutorialTarget.HERO_AUDIO_STUDIO, coords.boundsInRoot()) }
                     .clip(RoundedCornerShape(28.dp))
             ) {
                 // Background Image: The vibrant Koi pond with water ripples starting from bottom-left corner
@@ -267,6 +258,7 @@ fun HomeScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .onGloballyPositioned { coords -> onTargetPositioned(TutorialTarget.LYRICS_AND_FIXES, coords.boundsInRoot()) }
                             .clickable { onOpenFullScreen() },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -530,7 +522,6 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .onGloballyPositioned { coords -> onTargetPositioned(TutorialTarget.SOUND_STATIONS, coords.boundsInRoot()) }
                     .padding(vertical = 10.dp)
             ) {
                 Text(
@@ -565,7 +556,6 @@ fun HomeScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .onGloballyPositioned { coords -> onTargetPositioned(TutorialTarget.VAULT, coords.boundsInRoot()) }
                         .padding(vertical = 8.dp)
                 ) {
                     Text(

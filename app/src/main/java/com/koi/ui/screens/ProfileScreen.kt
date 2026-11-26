@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -15,9 +16,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -27,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.koi.ui.R
 import com.koi.ui.components.EditUsernameDialog
+import com.koi.ui.components.TutorialTarget
 import com.koi.ui.theme.*
 import com.koi.ui.viewmodel.UsageMetrics
 import java.util.Locale
@@ -37,7 +42,7 @@ private val VioletAccent = Color(0xFFA78BFA)
 
 @Composable
 fun ProfileScreen(
-    userName: String = "Casper",
+    userName: String = "Listener",
     usageMetrics: UsageMetrics,
     sleepTimerRemainingSeconds: Int,
     isPlaying: Boolean = false,
@@ -45,13 +50,21 @@ fun ProfileScreen(
     onRefreshMetricsClick: () -> Unit,
     onSetSleepTimer: (Int) -> Unit,
     onUpdateUsername: (String) -> Unit = {},
+    onTargetPositioned: (TutorialTarget, Rect) -> Unit = { _, _ -> },
+    tutorialStep: Int? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var showEditUsernameDialog by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
 
     LaunchedEffect(Unit) {
         onRefreshMetricsClick()
+    }
+    LaunchedEffect(tutorialStep) {
+        if (tutorialStep != null) {
+            listState.animateScrollToItem(0)
+        }
     }
 
     if (showEditUsernameDialog) {
@@ -67,6 +80,7 @@ fun ProfileScreen(
     }
 
     LazyColumn(
+        state = listState,
         modifier = modifier
             .fillMaxSize()
             .background(RogObsidian)
@@ -178,7 +192,12 @@ fun ProfileScreen(
 
         // 2. Lifetime Highlights 2x2 Grid
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier.onGloballyPositioned { coords ->
+                    onTargetPositioned(TutorialTarget.PROFILE_ANALYTICS, coords.boundsInRoot())
+                },
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)

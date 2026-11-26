@@ -251,9 +251,6 @@ fun EqualizerProfilesSheet(
                     value = customNameInput,
                     onValueChange = { if (it.length <= 24) customNameInput = it },
                     singleLine = true,
-                    placeholder = {
-                        Text("Preset name", color = RogTextMuted, fontSize = 13.sp)
-                    },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = RogTextGold,
                         unfocusedBorderColor = RogSurfaceHighlight,

@@ -21,6 +21,7 @@ import com.koi.backend.update.AppUpdateManager
 import com.koi.backend.update.GitHubAsset
 import com.koi.backend.update.GitHubRelease
 import com.koi.backend.update.UpdateUiState
+import com.koi.ui.components.getUpdateTutorialMissions
 import com.koi.ui.model.*
 import com.koi.ui.theme.*
 import kotlinx.coroutines.CancellationException
@@ -961,7 +962,8 @@ class PlaybackViewModel : ViewModel() {
                 username = finalName,
                 showInitialUsernameDialog = false,
                 showOnboardingTutorial = shouldShowTutorial,
-                onboardingTutorialStep = 0
+                onboardingTutorialStep = 0,
+                selectedTab = if (shouldShowTutorial) NavigationTab.HOME else it.selectedTab
             )
         }
     }
@@ -973,15 +975,31 @@ class PlaybackViewModel : ViewModel() {
             it.copy(
                 showInitialUsernameDialog = false,
                 showOnboardingTutorial = shouldShowTutorial,
-                onboardingTutorialStep = 0
+                onboardingTutorialStep = 0,
+                selectedTab = if (shouldShowTutorial) NavigationTab.HOME else it.selectedTab
             )
         }
     }
 
     fun nextTutorialStep() {
-        val current = _uiState.value.onboardingTutorialStep
-        if (current < 5) {
-            _uiState.update { it.copy(onboardingTutorialStep = current + 1) }
+        val missions = getUpdateTutorialMissions()
+        val nextStep = _uiState.value.onboardingTutorialStep + 1
+        if (nextStep < missions.size) {
+            val targetTab = missions[nextStep].tab
+            _uiState.update {
+                it.copy(
+                    onboardingTutorialStep = nextStep,
+                    selectedTab = targetTab,
+                    selectedPlaylist = null,
+                    showSettingsScreen = false,
+                    showDownloadManager = false
+                )
+            }
+            if (targetTab == NavigationTab.PROFILE) {
+                refreshUsageMetrics()
+            }
+        } else if (nextStep == missions.size) {
+            _uiState.update { it.copy(onboardingTutorialStep = nextStep) }
         } else {
             completeOnboardingTutorial()
         }
@@ -992,16 +1010,19 @@ class PlaybackViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 showOnboardingTutorial = false,
-                onboardingTutorialStep = 0
+                onboardingTutorialStep = 0,
+                selectedTab = NavigationTab.HOME
             )
         }
     }
 
     fun startOnboardingTutorial() {
+        val firstTab = getUpdateTutorialMissions().firstOrNull()?.tab ?: NavigationTab.HOME
         _uiState.update {
             it.copy(
                 showOnboardingTutorial = true,
                 onboardingTutorialStep = 0,
+                selectedTab = firstTab,
                 showSettingsScreen = false,
                 isFullScreenPlayerExpanded = false,
                 selectedPlaylist = null,
@@ -1599,12 +1620,13 @@ class PlaybackViewModel : ViewModel() {
                     when {
                         playlist.isLikedSongs -> database.getLikedSongs().map { it.toTrack(isLiked = true) }
                         else -> {
+                            val likedIds = database.getLikedVideoIds()
                             val local = database.getPlaylistTracks(playlist.id)
                             if (local.isNotEmpty()) {
-                                local.map { it.toTrack(database.isLiked(it.videoId)) }
+                                local.map { it.toTrack(it.videoId in likedIds) }
                             } else {
                                 database.getDownloadedPlaylistTracks(playlist.id)
-                                    .map { it.toTrack(database.isLiked(it.videoId)) }
+                                    .map { it.toTrack(it.videoId in likedIds) }
                             }
                         }
                     }

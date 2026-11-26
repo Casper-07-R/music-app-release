@@ -37,19 +37,20 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.koi.ui.R
+import com.koi.ui.model.NavigationTab
 import com.koi.ui.theme.*
 
 enum class TutorialTarget {
-    SPATIAL_DECK,
-    SOUND_STATIONS,
-    VAULT,
-    SETTINGS,
-    SLEEP_TIMER
+    HERO_AUDIO_STUDIO,
+    LYRICS_AND_FIXES,
+    QR_PLAYLIST_SHARING,
+    PROFILE_ANALYTICS
 }
 
 data class TutorialMission(
     val stepIndex: Int,
     val target: TutorialTarget,
+    val tab: NavigationTab = NavigationTab.HOME,
     val questBadge: String,
     val title: String,
     val loreDescription: String,
@@ -59,10 +60,57 @@ data class TutorialMission(
 )
 
 /**
- * AAA Game-style interactive walkthrough tutorial overlay.
- * Darkens the entire screen with a cinematic scrim, cuts out and spotlights
- * the active feature with a pulsing glowing aperture halo, and displays a
- * HUD quest dialogue box teaching the game mechanics as the user interacts.
+ * Single source of truth for the v1.3.0 update walkthrough missions.
+ */
+fun getUpdateTutorialMissions(): List<TutorialMission> = listOf(
+    TutorialMission(
+        stepIndex = 0,
+        target = TutorialTarget.HERO_AUDIO_STUDIO,
+        tab = NavigationTab.HOME,
+        questBadge = "UPDATE 1 OF 4 • AUDIO STUDIO & EQ",
+        title = "Live Spectrum, 10-Band EQ & 5 Profiles",
+        loreDescription = "The Audio Deck now shows your album art alongside a live 10-band FFT visualizer. Open the redesigned 10-Band EQ for custom saveable presets, Pre-Amp with Headroom Guard, A/B RAW bypass, Stage depth controls, and 5 upgraded Acoustic Profiles with smooth parameter ramping.",
+        objectivePrompt = "👉 New in v1.3.0: Tap Profile or EQ on the deck above to customize your acoustic studio.",
+        actionButtonText = "Next Feature →",
+        iconVector = Icons.Default.GraphicEq
+    ),
+    TutorialMission(
+        stepIndex = 1,
+        target = TutorialTarget.LYRICS_AND_FIXES,
+        tab = NavigationTab.HOME,
+        questBadge = "UPDATE 2 OF 4 • TIMED LYRICS & FIXES",
+        title = "Official Synced Lyrics & Search Fixes",
+        loreDescription = "Synced lyrics now integrate official timed cue-range tracks with strict remix, karaoke, and script filtering. Playlist search adds featured & community results with clear loading states, and missing artist or duration metadata repairs automatically.",
+        objectivePrompt = "👉 New in v1.3.0: Tap the track header above anytime to view live synced lyrics in Full-Screen Player.",
+        actionButtonText = "Next: QR Sharing →",
+        iconVector = Icons.Default.MusicNote
+    ),
+    TutorialMission(
+        stepIndex = 2,
+        target = TutorialTarget.QR_PLAYLIST_SHARING,
+        tab = NavigationTab.YOUR_LIBRARY,
+        questBadge = "UPDATE 3 OF 4 • KOI POND QR SHARING",
+        title = "Art QR Playlist Sharing & Scanner",
+        loreDescription = "Share any playlist — including your Liked Songs — as full-color Koi Pond art QR cards across Koi Pond, Kohaku Gold, and Lotus Cyan themes. Save cards to your gallery, send via share sheet, or import via camera scan, gallery/WhatsApp image, or koi:// links.",
+        objectivePrompt = "👉 New in v1.3.0: Try Scan QR or Import Image above, or tap Share on any playlist below.",
+        actionButtonText = "Next: Analytics →",
+        iconVector = Icons.Default.QrCode2
+    ),
+    TutorialMission(
+        stepIndex = 3,
+        target = TutorialTarget.PROFILE_ANALYTICS,
+        tab = NavigationTab.PROFILE,
+        questBadge = "UPDATE 4 OF 4 • LIVE PROFILE ANALYTICS",
+        title = "Listening Insights & Storage Monitors",
+        loreDescription = "Your Profile now computes live listening statistics including a 7-day activity chart, favorite genres, most played songs, top playlists and artists, total listening time, plus Cache, Offline Downloads, and App Memory monitors.",
+        objectivePrompt = "👉 New in v1.3.0: Explore your live highlights above and scroll below for charts and storage breakdowns.",
+        actionButtonText = "Finish Update Tour 🎧",
+        iconVector = Icons.Default.BarChart
+    )
+)
+
+/**
+ * Interactive walkthrough overlay highlighting only the features and fixes added in v1.3.0.
  */
 @Composable
 fun GameMechanicsTutorialOverlay(
@@ -80,60 +128,7 @@ fun GameMechanicsTutorialOverlay(
     val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
     val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
 
-    val missions = remember {
-        listOf(
-            TutorialMission(
-                stepIndex = 0,
-                target = TutorialTarget.SPATIAL_DECK,
-                questBadge = "MISSION 1 OF 5 • AUDIO ENGINE & EQ",
-                title = "360° Spatializer & 10-Band EQ",
-                loreDescription = "Ordinary music is flat stereo. In Koi, your audio engine features real-time 360° orbital spatialization (8D / 16D) harmonized with a 10-band studio equalizer. Music revolves around your head for a live concert acoustic space.",
-                objectivePrompt = "👉 Interactive Mechanic: Tap [ 8D ] or [ 16D ] on the player deck above right now to feel the sound rotate around you!",
-                actionButtonText = "Next Mission →",
-                iconVector = Icons.Default.GraphicEq
-            ),
-            TutorialMission(
-                stepIndex = 1,
-                target = TutorialTarget.SOUND_STATIONS,
-                questBadge = "MISSION 2 OF 5 • SOUNDSCAPES",
-                title = "Curated Sound Stations",
-                loreDescription = "Need deep focus, chill beats, or sleep? Jump straight into handcrafted acoustic spaces tuned specifically for 8D spatial acoustics and ambient binaural beats.",
-                objectivePrompt = "👉 Interactive Mechanic: Tap any station card above to switch tracks and hear continuous soundscapes!",
-                actionButtonText = "Next Mission →",
-                iconVector = Icons.Default.AutoAwesome
-            ),
-            TutorialMission(
-                stepIndex = 2,
-                target = TutorialTarget.VAULT,
-                questBadge = "MISSION 3 OF 5 • VAULT",
-                title = "The Private Music Vault",
-                loreDescription = "Every track you heart or download is stored in your private vault with zero-latency playback. Enjoy seamless listening even with zero mobile data or in airplane mode.",
-                objectivePrompt = "👉 Your Offline Vault: All your downloaded songs and playlists stay right here for instant offline playback.",
-                actionButtonText = "Next Mission →",
-                iconVector = Icons.Default.CheckCircle
-            ),
-            TutorialMission(
-                stepIndex = 3,
-                target = TutorialTarget.SETTINGS,
-                questBadge = "MISSION 4 OF 5 • ZERO-BUFFER STREAMING",
-                title = "Adaptive Quality & Fallbacks",
-                loreDescription = "Weak cellular coverage or traveling? Koi dynamically monitors network bandwidth and automatically falls back through 4 audio tiers (High, Med, Low, Data Saver). Playback never tears, stutters, or buffers even on low network coverage!",
-                objectivePrompt = "👉 Interactive Mechanic: Tap the Settings gear icon above to explore Streaming Quality & Coverage settings, or switch between Auto and Data Saver mode!",
-                actionButtonText = "Next Mission →",
-                iconVector = Icons.Default.Speed
-            ),
-            TutorialMission(
-                stepIndex = 4,
-                target = TutorialTarget.SLEEP_TIMER,
-                questBadge = "MISSION 5 OF 5 • BEDTIME & GESTURES",
-                title = "Fade-Out Sleep Timer & Swipe Controls",
-                loreDescription = "Falling asleep to music? Koi's smart timer never cuts off abruptly — it gently decrescendos volume to zero over the final 3 minutes. Plus, swipe the floating mini-player left or right to dismiss it cleanly!",
-                objectivePrompt = "👉 Interactive Mechanic: Tap the bedtime moon icon above to set your sleep timer, and swipe the mini-player sideways when you want it out of view!",
-                actionButtonText = "Finish Academy & Listen 🎧",
-                iconVector = Icons.Default.Bedtime
-            )
-        )
-    }
+    val missions = remember { getUpdateTutorialMissions() }
 
     val isGraduation = currentStep >= missions.size
 
@@ -169,41 +164,33 @@ fun GameMechanicsTutorialOverlay(
 
             // Calculate active spotlight cutout bounds with safe fallback
             val targetRect = recordedBounds ?: when (mission.target) {
-                TutorialTarget.SPATIAL_DECK -> Rect(
+                TutorialTarget.HERO_AUDIO_STUDIO -> Rect(
                     left = screenWidthPx * 0.04f,
-                    top = screenHeightPx * 0.08f,
+                    top = screenHeightPx * 0.11f,
                     right = screenWidthPx * 0.96f,
-                    bottom = screenHeightPx * 0.28f
+                    bottom = screenHeightPx * 0.36f
                 )
-                TutorialTarget.SOUND_STATIONS -> Rect(
+                TutorialTarget.LYRICS_AND_FIXES -> Rect(
+                    left = screenWidthPx * 0.08f,
+                    top = screenHeightPx * 0.13f,
+                    right = screenWidthPx * 0.92f,
+                    bottom = screenHeightPx * 0.21f
+                )
+                TutorialTarget.QR_PLAYLIST_SHARING -> Rect(
                     left = screenWidthPx * 0.04f,
-                    top = screenHeightPx * 0.32f,
+                    top = screenHeightPx * 0.19f,
                     right = screenWidthPx * 0.96f,
-                    bottom = screenHeightPx * 0.48f
+                    bottom = screenHeightPx * 0.27f
                 )
-                TutorialTarget.VAULT -> Rect(
+                TutorialTarget.PROFILE_ANALYTICS -> Rect(
                     left = screenWidthPx * 0.04f,
-                    top = screenHeightPx * 0.52f,
+                    top = screenHeightPx * 0.15f,
                     right = screenWidthPx * 0.96f,
-                    bottom = screenHeightPx * 0.64f
-                )
-                TutorialTarget.SETTINGS -> Rect(
-                    left = screenWidthPx - with(density) { 56.dp.toPx() },
-                    top = with(density) { 38.dp.toPx() },
-                    right = screenWidthPx - with(density) { 8.dp.toPx() },
-                    bottom = with(density) { 88.dp.toPx() }
-                )
-                TutorialTarget.SLEEP_TIMER -> Rect(
-                    left = screenWidthPx - with(density) { 145.dp.toPx() },
-                    top = with(density) { 38.dp.toPx() },
-                    right = screenWidthPx - with(density) { 85.dp.toPx() },
-                    bottom = with(density) { 88.dp.toPx() }
+                    bottom = screenHeightPx * 0.34f
                 )
             }
 
-            val paddingPx = with(density) {
-                if (mission.target == TutorialTarget.SLEEP_TIMER || mission.target == TutorialTarget.SETTINGS) 10.dp.toPx() else 8.dp.toPx()
-            }
+            val paddingPx = with(density) { 8.dp.toPx() }
             val cutoutLeft = (targetRect.left - paddingPx).coerceAtLeast(0f)
             val cutoutTop = (targetRect.top - paddingPx).coerceAtLeast(0f)
             val cutoutRight = (targetRect.right + paddingPx).coerceAtMost(screenWidthPx)
@@ -669,7 +656,7 @@ private fun TutorialGraduationCard(
                     .padding(horizontal = 10.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = "🏆 TUTORIAL COMPLETE • AUDIO MASTER",
+                    text = "UPDATE TOUR COMPLETE • KOI v1.3.0",
                     fontSize = 11.sp,
                     fontFamily = CircularFontFamily,
                     fontWeight = FontWeight.Bold,
@@ -681,7 +668,7 @@ private fun TutorialGraduationCard(
             Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = "Welcome to Koi, $username!",
+                text = "You're All Set, $username!",
                 fontSize = 22.sp,
                 fontFamily = CircularFontFamily,
                 fontWeight = FontWeight.Bold,
@@ -692,7 +679,7 @@ private fun TutorialGraduationCard(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "You've mastered all core mechanics of the Koi Audio Engine — from 360° spatial sound and 10-band EQ to adaptive zero-buffering streaming and gentle bedtime timers. Put on your headphones and immerse yourself in pure sound.",
+                text = "You've explored everything new in v1.3.0: the live spectrum Audio Deck, redesigned 10-Band EQ & 5 DSP Profiles, Official Timed Lyrics & search fixes, Koi Pond Art QR sharing & scanning, and Live Profile Analytics.",
                 fontSize = 13.sp,
                 fontFamily = CircularFontFamily,
                 color = RogTextSecondary,
@@ -721,7 +708,7 @@ private fun TutorialGraduationCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Begin Listening in 360°",
+                    text = "Start Listening",
                     fontSize = 15.sp,
                     fontFamily = CircularFontFamily,
                     fontWeight = FontWeight.Bold,

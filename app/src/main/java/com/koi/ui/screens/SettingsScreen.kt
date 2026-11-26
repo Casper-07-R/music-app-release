@@ -807,7 +807,7 @@ fun SettingsScreen(
                                     color = RogTextPrimary
                                 )
                                 Text(
-                                    text = "Version ${updateState.currentVersion} • music-app-release",
+                                    text = "Version ${updateState.currentVersion}",
                                     fontSize = 11.5.sp,
                                     fontFamily = CircularFontFamily,
                                     color = RogTextSecondary
@@ -847,7 +847,7 @@ fun SettingsScreen(
                     when (updateState) {
                         is UpdateUiState.Idle -> {
                             Text(
-                                text = "Check for new releases and updates directly from Casper-07-R/music-app-release.",
+                                text = "Check for new Koi releases and updates.",
                                 fontSize = 12.sp,
                                 fontFamily = CircularFontFamily,
                                 color = RogTextSecondary,
@@ -861,7 +861,7 @@ fun SettingsScreen(
                                 modifier = Modifier.padding(vertical = 4.dp)
                             ) {
                                 Text(
-                                    text = "Checking for new releases on GitHub...",
+                                    text = "Checking for updates...",
                                     fontSize = 12.sp,
                                     fontFamily = CircularFontFamily,
                                     color = RogTextSecondary
@@ -888,7 +888,7 @@ fun SettingsScreen(
                                     )
                                 }
                                 Text(
-                                    text = "No newer releases found on Casper-07-R/music-app-release.",
+                                    text = "You are running the latest version.",
                                     fontSize = 11.5.sp,
                                     fontFamily = CircularFontFamily,
                                     color = RogTextSecondary

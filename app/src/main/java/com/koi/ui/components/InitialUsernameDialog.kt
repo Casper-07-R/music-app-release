@@ -114,14 +114,6 @@ fun InitialUsernameDialog(
                             usernameInput = it
                         }
                     },
-                    placeholder = {
-                        Text(
-                            text = "Enter your username",
-                            fontSize = 14.sp,
-                            fontFamily = CircularFontFamily,
-                            color = RogTextSecondary.copy(alpha = 0.6f)
-                        )
-                    },
                     singleLine = true,
                     shape = RoundedCornerShape(14.dp),
                     colors = OutlinedTextFieldDefaults.colors(
